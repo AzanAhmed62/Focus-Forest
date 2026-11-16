@@ -1,0 +1,6 @@
+{
+  "name": "Focus Forest",
+  "description": "Grow your focus. Reclaim your time. A calm, local-first digital wellness app with focus sessions, Android app usage insights, daily challenges, and a growing virtual forest.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
