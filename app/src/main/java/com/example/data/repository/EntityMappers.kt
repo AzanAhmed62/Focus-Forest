@@ -98,7 +98,8 @@ internal fun ChallengeEntity.toDomain(progress: ChallengeProgressEntity?): Chall
     createdAtMs = createdAtMs,
     completedAtMs = progress?.completedAtMs,
     rewardClaimed = progress?.rewardClaimed ?: false,
-    targetPackageName = targetPackageName
+    targetPackageName = targetPackageName,
+    isArchived = isArchived
 )
 
 internal fun ChallengeItem.toEntity(): ChallengeEntity = ChallengeEntity(
@@ -113,7 +114,8 @@ internal fun ChallengeItem.toEntity(): ChallengeEntity = ChallengeEntity(
     rewardSeeds = rewardSeeds,
     periodKey = periodKey,
     createdAtMs = createdAtMs,
-    targetPackageName = targetPackageName
+    targetPackageName = targetPackageName,
+    isArchived = isArchived
 )
 
 internal fun ForestTreeEntity.toDomain(): ForestTree = ForestTree(

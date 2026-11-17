@@ -86,6 +86,7 @@ fun SettingsScreen(
 
     var editableName by remember(state.displayName) { mutableStateOf(state.displayName) }
     var editableGoal by remember(state.dailyGoalMinutes) { mutableIntStateOf(state.dailyGoalMinutes) }
+    var editableBudget by remember(state.dailyUsageBudgetMinutes) { mutableIntStateOf(state.dailyUsageBudgetMinutes) }
 
     val notificationPermLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -135,7 +136,7 @@ fun SettingsScreen(
             onDismissRequest = { viewModel.dismissDeleteAllDialog() },
             title = { Text("Delete all local data?") },
             text = {
-                Text("This permanently erases all focus sessions, streaks, forest trees, challenges, shop items, and usage snapshots from this device.")
+                Text("This permanently erases all focus sessions, streaks, forest trees, challenges, shop items, scheduled reminders, and usage snapshots from this device.")
             },
             confirmButton = {
                 Button(
@@ -184,7 +185,7 @@ fun SettingsScreen(
                 // 1. Personal Profile & Daily Goal
                 item {
                     BotanicalCard {
-                        Text("Profile & Daily Goal", style = MaterialTheme.typography.titleMedium)
+                        Text("Profile, Focus Goal & Usage Budget", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(10.dp))
                         OutlinedTextField(
                             value = editableName,
@@ -207,11 +208,26 @@ fun SettingsScreen(
                             onValueChange = { editableGoal = (it / 5f).toInt() * 5 },
                             valueRange = 15f..180f
                         )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Daily screen-time budget", style = MaterialTheme.typography.bodyMedium)
+                            Text("${editableBudget} min", style = MaterialTheme.typography.titleSmall)
+                        }
+                        Slider(
+                            value = editableBudget.toFloat(),
+                            onValueChange = { editableBudget = (it / 15f).toInt() * 15 },
+                            valueRange = 30f..360f
+                        )
                         Button(
-                            onClick = { viewModel.updateProfile(editableName, editableGoal) },
+                            onClick = {
+                                viewModel.updateProfile(editableName, editableGoal)
+                                viewModel.updateDailyUsageBudget(editableBudget)
+                            },
                             modifier = Modifier.testTag("save_profile_settings_button")
                         ) {
-                            Text("Save Profile & Goal")
+                            Text("Save Profile & Goals")
                         }
                     }
                 }
@@ -268,12 +284,33 @@ fun SettingsScreen(
                                 }
                             )
                             SwitchRow(
-                                label = "Gentle daily reminder (${np.dailyReminderHour}:00)",
+                                label = "Gentle daily reminder (%02d:%02d)".format(np.dailyReminderHour, np.dailyReminderMinute),
                                 checked = np.dailyReminderEnabled,
                                 onCheckedChange = {
                                     viewModel.updateNotificationPrefs(np.copy(dailyReminderEnabled = it))
                                 }
                             )
+                            if (np.dailyReminderEnabled) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Reminder hour", style = MaterialTheme.typography.bodySmall)
+                                    Row {
+                                        TextButton(onClick = {
+                                            viewModel.updateNotificationPrefs(
+                                                np.copy(dailyReminderHour = (np.dailyReminderHour + 23) % 24)
+                                            )
+                                        }) { Text("−1h") }
+                                        TextButton(onClick = {
+                                            viewModel.updateNotificationPrefs(
+                                                np.copy(dailyReminderHour = (np.dailyReminderHour + 1) % 24)
+                                            )
+                                        }) { Text("+1h") }
+                                    }
+                                }
+                            }
                             SwitchRow(
                                 label = "Incomplete daily goal nudge",
                                 checked = np.incompleteGoalReminderEnabled,
@@ -282,7 +319,7 @@ fun SettingsScreen(
                                 }
                             )
                             SwitchRow(
-                                label = "Weekly summary",
+                                label = "Weekly reflection summary",
                                 checked = np.weeklySummaryEnabled,
                                 onCheckedChange = {
                                     viewModel.updateNotificationPrefs(np.copy(weeklySummaryEnabled = it))
@@ -295,6 +332,27 @@ fun SettingsScreen(
                                     viewModel.updateNotificationPrefs(np.copy(quietHoursEnabled = it))
                                 }
                             )
+                            if (np.quietHoursEnabled) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Quiet start (${np.quietHoursStartHour}:00)", style = MaterialTheme.typography.bodySmall)
+                                    Row {
+                                        TextButton(onClick = {
+                                            viewModel.updateNotificationPrefs(
+                                                np.copy(quietHoursStartHour = (np.quietHoursStartHour + 23) % 24)
+                                            )
+                                        }) { Text("−1h") }
+                                        TextButton(onClick = {
+                                            viewModel.updateNotificationPrefs(
+                                                np.copy(quietHoursStartHour = (np.quietHoursStartHour + 1) % 24)
+                                            )
+                                        }) { Text("+1h") }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -317,7 +375,7 @@ fun SettingsScreen(
                                 Column {
                                     Text("Privacy, Permissions & Data", style = MaterialTheme.typography.titleMedium)
                                     Text(
-                                        "Review Usage Access status and local-only guarantees",
+                                        "Review Usage Access status, backup exclusions, and local-only guarantees",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -371,7 +429,7 @@ fun SettingsScreen(
                         }
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text = "Version 1.0.0 is 100% local and free. Future updates via Google Play Billing are planned to support optional cloud backup, extended ambient soundscapes, and real social challenge rooms.",
+                            text = "This local-first release is 100% free and offline. Planned future releases via Google Play Billing will introduce optional encrypted cloud sync, expanded soundscapes, and real shared focus rooms.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

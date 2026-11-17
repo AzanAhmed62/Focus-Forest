@@ -113,6 +113,30 @@ fun FocusScreen(
         )
     }
 
+    if (state.showAbortChainConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissAbortChainConfirmation() },
+            title = { Text("End Pomodoro Chain?") },
+            text = {
+                Text("Previously completed focus rounds remain saved in your history and forest. Only the current incomplete step is cancelled.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmAbortChain() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_abort_chain_button")
+                ) {
+                    Text("End Chain")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissAbortChainConfirmation() }) {
+                    Text("Continue")
+                }
+            }
+        )
+    }
+
     val unlockedAchievements = state.completionOutcome?.newlyUnlockedAchievements.orEmpty()
     if (showAchievementsDialog && unlockedAchievements.isNotEmpty()) {
         AchievementCelebrationDialog(
@@ -136,7 +160,7 @@ fun FocusScreen(
                     style = MaterialTheme.typography.headlineLarge
                 )
                 Text(
-                    text = "Protect an intentional block of time and grow a new tree.",
+                    text = "Protect an intentional block of time and grow your forest.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -163,9 +187,41 @@ fun FocusScreen(
                 }
             }
 
+            state.completionErrorMessage?.let { errorMsg ->
+                item {
+                    BotanicalCard(containerColor = MaterialTheme.colorScheme.errorContainer) {
+                        Text(
+                            text = errorMsg,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { viewModel.retryPendingCompletion() },
+                            modifier = Modifier.testTag("retry_session_completion_button")
+                        ) {
+                            Text("Retry Save")
+                        }
+                    }
+                }
+            }
+
+            state.activeChain?.let { chain ->
+                item {
+                    ActiveChainBannerCard(
+                        chain = chain,
+                        hasActiveTimer = state.activeTimer != null,
+                        onStartNextStep = { viewModel.startNextChainStep() },
+                        onAbortChain = { viewModel.requestAbortChainConfirmation() },
+                        onDismissCompleted = { viewModel.dismissCompletedChainSummary() }
+                    )
+                }
+            }
+
             val outcome = state.completionOutcome
             if (outcome != null && state.activeTimer == null) {
                 item {
+                    val isBreak = outcome.session.sessionType.isBreak
                     BotanicalCard(containerColor = MaterialTheme.colorScheme.primaryContainer) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
@@ -182,7 +238,11 @@ fun FocusScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "You planted a ${outcome.session.sessionType.treeSpecies.displayName} and earned +${outcome.session.xpAwarded} XP & +${outcome.session.seedsAwarded} seeds.",
+                            text = if (isBreak) {
+                                "Restorative ${outcome.session.completedMinutes}-minute break finished (+0 XP — breaks restore your focus without planting trees)."
+                            } else {
+                                "You planted a ${outcome.session.sessionType.treeSpecies.displayName} and earned +${outcome.session.xpAwarded} XP & +${outcome.session.seedsAwarded} seeds."
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -204,24 +264,26 @@ fun FocusScreen(
                         }
                         Spacer(Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedButton(
-                                onClick = {
-                                    val shareText = ShareFormatter.formatSessionShareText(
-                                        session = outcome.session,
-                                        currentStreakDays = state.currentStreakDays,
-                                        forestLevel = state.forestLevel
-                                    )
-                                    val intent = Intent.createChooser(
-                                        ShareFormatter.buildTextShareIntent(shareText),
-                                        "Share Focus Summary"
-                                    )
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.testTag("share_session_button")
-                            ) {
-                                Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Share Summary")
+                            if (!isBreak) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val shareText = ShareFormatter.formatSessionShareText(
+                                            session = outcome.session,
+                                            currentStreakDays = state.currentStreakDays,
+                                            forestLevel = state.forestLevel
+                                        )
+                                        val intent = Intent.createChooser(
+                                            ShareFormatter.buildTextShareIntent(shareText),
+                                            "Share Focus Summary"
+                                        )
+                                        context.startActivity(intent)
+                                    },
+                                    modifier = Modifier.testTag("share_session_button")
+                                ) {
+                                    Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Share Summary")
+                                }
                             }
                             TextButton(onClick = { viewModel.dismissCompletionOutcome() }) {
                                 Text("Done")
@@ -231,7 +293,7 @@ fun FocusScreen(
                 }
             }
 
-            // Central Countdown Ring Card (above the fold for instant start)
+            // Central Countdown Ring Card
             item {
                 val active = state.activeTimer
                 val displayRemainingMs = active?.remainingMs
@@ -247,6 +309,9 @@ fun FocusScreen(
                 } else {
                     MaterialTheme.colorScheme.primary
                 }
+                val displayType = active?.sessionType
+                    ?: state.activeChain?.takeIf { !it.isCompleted }?.currentStepType
+                    ?: if (state.isChainMode) SessionType.POMODORO else state.selectedType
 
                 BotanicalCard {
                     Column(
@@ -271,7 +336,7 @@ fun FocusScreen(
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
-                                    text = active?.sessionType?.displayName ?: state.selectedType.displayName,
+                                    text = displayType.displayName,
                                     style = MaterialTheme.typography.labelLarge
                                 )
                             }
@@ -312,10 +377,14 @@ fun FocusScreen(
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    text = when (active?.status) {
-                                        SessionStatus.RUNNING -> "Growing ${active.sessionType.treeSpecies.displayName}"
-                                        SessionStatus.PAUSED -> "Paused"
-                                        else -> "Ready to plant ${state.selectedType.treeSpecies.displayName}"
+                                    text = when {
+                                        active?.status == SessionStatus.RUNNING && active.sessionType.isBreak ->
+                                            "Resting mindfully (+0 XP)"
+                                        active?.status == SessionStatus.RUNNING ->
+                                            "Growing ${active.sessionType.treeSpecies.displayName}"
+                                        active?.status == SessionStatus.PAUSED -> "Paused"
+                                        displayType.isBreak -> "Restorative pause (no tree planted)"
+                                        else -> "Ready to plant ${displayType.treeSpecies.displayName}"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -335,17 +404,27 @@ fun FocusScreen(
                         Spacer(Modifier.height(18.dp))
 
                         if (active == null) {
-                            Button(
-                                onClick = { viewModel.startSession() },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(54.dp)
-                                    .testTag("start_focus_button"),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                Icon(Icons.Rounded.PlayArrow, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Begin ${state.selectedType.displayName}")
+                            val showStartButton = state.activeChain == null ||
+                                state.activeChain?.isCompleted == true
+                            if (showStartButton) {
+                                Button(
+                                    onClick = { viewModel.startSession() },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(54.dp)
+                                        .testTag("start_focus_button"),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        if (state.isChainMode) {
+                                            "Start ${state.chainConfig.totalFocusSessions}-Round Chain"
+                                        } else {
+                                            "Begin ${state.selectedType.displayName}"
+                                        }
+                                    )
+                                }
                             }
                         } else {
                             Row(
@@ -402,48 +481,83 @@ fun FocusScreen(
                 }
             }
 
-            // Session Type Picker (when idle)
-            if (state.activeTimer == null) {
+            // Ambient Soundscape card (available before & during sessions)
+            item {
+                AmbientSoundscapeCard(
+                    selectedPreset = state.ambientPreset,
+                    volume = state.ambientVolume,
+                    playWithSession = state.ambientPlayWithSession,
+                    isPlaying = state.isAmbientPlaying,
+                    onSelectPreset = viewModel::selectAmbientPreset,
+                    onVolumeChange = viewModel::updateAmbientVolume,
+                    onPlayWithSessionChange = viewModel::setAmbientPlayWithSession,
+                    onTogglePlayback = viewModel::toggleAmbientPlayback
+                )
+            }
+
+            // Mode & Session Configuration (when idle and no active chain)
+            val chainIdle = state.activeChain == null || state.activeChain?.isCompleted == true
+            if (state.activeTimer == null && chainIdle) {
                 item {
                     BotanicalCard {
-                        Text("Session Type", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(10.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SessionType.entries.forEach { type ->
-                                FilterChip(
-                                    selected = state.selectedType == type,
-                                    onClick = { viewModel.selectSessionType(type) },
-                                    label = {
-                                        val mins = if (type == SessionType.CUSTOM) state.customMinutes else type.defaultMinutes
-                                        Text("${type.displayName} (${mins}m)")
-                                    },
-                                    modifier = Modifier.testTag("session_type_${type.name}")
-                                )
-                            }
+                        Text("Focus Mode", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = !state.isChainMode,
+                                onClick = { viewModel.setChainMode(false) },
+                                label = { Text("Single Session") },
+                                modifier = Modifier.testTag("mode_single_session")
+                            )
+                            FilterChip(
+                                selected = state.isChainMode,
+                                onClick = { viewModel.setChainMode(true) },
+                                label = { Text("Pomodoro Chain") },
+                                modifier = Modifier.testTag("mode_pomodoro_chain")
+                            )
                         }
 
-                        if (state.selectedType == SessionType.CUSTOM) {
+                        if (!state.isChainMode) {
                             Spacer(Modifier.height(12.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                            Text("Session Type", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(8.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text("Custom duration", style = MaterialTheme.typography.labelLarge)
-                                Text(
-                                    "${state.customMinutes} min",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary
+                                SessionType.entries.forEach { type ->
+                                    FilterChip(
+                                        selected = state.selectedType == type,
+                                        onClick = { viewModel.selectSessionType(type) },
+                                        label = {
+                                            val mins = if (type == SessionType.CUSTOM) state.customMinutes else type.defaultMinutes
+                                            Text("${type.displayName} (${mins}m)")
+                                        },
+                                        modifier = Modifier.testTag("session_type_${type.name}")
+                                    )
+                                }
+                            }
+
+                            if (state.selectedType == SessionType.CUSTOM) {
+                                Spacer(Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Custom duration", style = MaterialTheme.typography.labelLarge)
+                                    Text(
+                                        "${state.customMinutes} min",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Slider(
+                                    value = state.customMinutes.toFloat(),
+                                    onValueChange = { viewModel.updateCustomMinutes((it / 5f).toInt() * 5) },
+                                    valueRange = 5f..180f,
+                                    modifier = Modifier.testTag("custom_duration_slider")
                                 )
                             }
-                            Slider(
-                                value = state.customMinutes.toFloat(),
-                                onValueChange = { viewModel.updateCustomMinutes((it / 5f).toInt() * 5) },
-                                valueRange = 5f..180f,
-                                modifier = Modifier.testTag("custom_duration_slider")
-                            )
                         }
 
                         Spacer(Modifier.height(12.dp))
@@ -457,6 +571,15 @@ fun FocusScreen(
                                 .fillMaxWidth()
                                 .testTag("session_intention_input"),
                             shape = RoundedCornerShape(16.dp)
+                        )
+                    }
+                }
+
+                if (state.isChainMode) {
+                    item {
+                        ChainSetupCard(
+                            config = state.chainConfig,
+                            onUpdateConfig = viewModel::updateChainConfig
                         )
                     }
                 }

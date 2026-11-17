@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.Forest
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.SelfImprovement
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Spa
@@ -50,6 +51,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.domain.model.SnapshotCompleteness
 import com.example.domain.model.UsagePermissionStatus
 import com.example.platform.usage.AndroidUsageStatsGateway
 import com.example.ui.components.AvatarBadge
@@ -208,7 +210,38 @@ fun TodayScreen(
                     ) {
                         Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Start Focus Session")
+                        Text(
+                            if (state.activeChain != null && !state.activeChain!!.isCompleted) {
+                                "Resume Pomodoro Chain"
+                            } else {
+                                "Start Focus Session"
+                            }
+                        )
+                    }
+                }
+            }
+
+            state.activeChain?.takeIf { !it.isCompleted }?.let { chain ->
+                item {
+                    BotanicalCard(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+                        modifier = Modifier.clickable { onQuickStartFocus() }
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Repeat, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Pomodoro Chain Active (${chain.completedFocusCount}/${chain.config.totalFocusSessions} rounds)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Next step: ${chain.currentStepType.displayName} (${chain.currentStepPlannedMinutes}m)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -298,6 +331,20 @@ fun TodayScreen(
                                 Text("Enable Usage Insights")
                             }
                         }
+                        usage.queryErrorMessage != null -> {
+                            Text(
+                                text = usage.queryErrorMessage,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        usage.todayCompleteness == SnapshotCompleteness.ZERO_USAGE -> {
+                            Text(
+                                text = "0 min observed foreground usage today (zero-usage day vs ${usage.dailyUsageBudgetMinutes}m budget).",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                         usage.isDataUnavailable || usage.todaySummary == null -> {
                             Text(
                                 text = "Usage Access is active, but Android has not reported usable foreground usage data yet for today.",
@@ -308,7 +355,7 @@ fun TodayScreen(
                         else -> {
                             val summary = usage.todaySummary
                             Text(
-                                text = "${summary.totalObservedMinutes} min observed foreground usage today",
+                                text = "${summary.totalObservedMinutes} min observed today (${usage.dailyUsageBudgetMinutes}m budget)",
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -316,7 +363,7 @@ fun TodayScreen(
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     text = "Top today: " + summary.topApps.take(2)
-                                        .joinToString(" • ") { "${it.appName} (${it.foregroundMinutes}m)" },
+                                        .joinToString(" • ") { "${it.appName} (${it.displayDuration})" },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

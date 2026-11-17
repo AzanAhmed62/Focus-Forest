@@ -19,10 +19,14 @@ import com.example.domain.engine.FocusTimerEngine
 import com.example.domain.model.AppUsageSummary
 import com.example.domain.model.LaunchableAppInfo
 import com.example.domain.model.SessionType
+import com.example.domain.model.SnapshotCompleteness
 import com.example.domain.model.ThemePreference
 import com.example.domain.model.UsagePermissionStatus
+import com.example.domain.model.UsageQueryResult
 import com.example.domain.model.UserIntention
 import com.example.platform.usage.UsageStatsGateway
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -53,7 +57,8 @@ private class FakeClockProvider(
 
 private class FakeUsageStatsGateway(
     var permission: UsagePermissionStatus = UsagePermissionStatus.DENIED,
-    var dailyItemsByDate: Map<LocalDate, List<AppUsageSummary>> = emptyMap()
+    var dailyItemsByDate: Map<LocalDate, List<AppUsageSummary>> = emptyMap(),
+    var zeroUsageDates: Set<LocalDate> = emptySet()
 ) : UsageStatsGateway {
     var launchableAppsCalls: Int = 0
     var queryCalls: Int = 0
@@ -72,6 +77,21 @@ private class FakeUsageStatsGateway(
             dailyItemsByDate[date].orEmpty()
         } else {
             emptyList()
+        }
+    }
+
+    override fun queryDailyForegroundUsageResult(
+        date: LocalDate,
+        monitoredPackages: Set<String>,
+        preloadedLaunchableApps: List<LaunchableAppInfo>
+    ): UsageQueryResult {
+        if (permission != UsagePermissionStatus.GRANTED) return UsageQueryResult.PermissionDenied
+        queryCalls++
+        val items = dailyItemsByDate[date].orEmpty()
+        return when {
+            items.isNotEmpty() -> UsageQueryResult.SuccessWithData(items, isPartialDay = date == LocalDate.of(2025, 11, 16))
+            date in zeroUsageDates -> UsageQueryResult.SuccessZeroUsage(isPartialDay = false)
+            else -> UsageQueryResult.Unavailable("No data for $date")
         }
     }
 }
@@ -145,33 +165,51 @@ class PersistenceAndExportTest {
     }
 
     @Test
-    fun `usage repository respects denied permission, empty data, and deletes records cleanly`() = runTest {
+    fun `usage repository respects denied permission, caches 30s, coalesces calls, and deletes records cleanly`() = runTest {
         val usageRepo = UsageRepository(db, prefs, usageGateway, clock)
 
         // Denied: must NOT scan launchable apps or query usage stats
-        val deniedState = usageRepo.refreshUsageData()
+        val deniedState = usageRepo.refreshUsageData(forceRefresh = true)
         assertEquals(UsagePermissionStatus.DENIED, deniedState.permissionStatus)
         assertTrue(deniedState.isDataUnavailable)
         assertEquals(0, usageGateway.launchableAppsCalls)
         assertEquals(0, usageGateway.queryCalls)
 
-        // Granted but no data from Android: scans launchable apps exactly once
+        // Granted but no data from Android: scans launchable apps once
         usageRepo.acceptDisclosure()
         usageGateway.permission = UsagePermissionStatus.GRANTED
-        val emptyGranted = usageRepo.refreshUsageData()
+        val emptyGranted = usageRepo.refreshUsageData(forceRefresh = true)
         assertEquals(UsagePermissionStatus.GRANTED, emptyGranted.permissionStatus)
         assertTrue(emptyGranted.isDataUnavailable)
         assertEquals(1, usageGateway.launchableAppsCalls)
 
-        // Granted with valid usage data
+        // Non-forced call within 30s TTL returns cached state without rescanning
+        usageRepo.refreshUsageData(forceRefresh = false)
+        assertEquals(1, usageGateway.launchableAppsCalls)
+
+        // Advance past 30s TTL with valid usage data + zero-usage day
+        clock.wallMs += 31_000L
         val today = clock.todayLocalDate()
+        val yesterday = today.minusDays(1)
         usageGateway.dailyItemsByDate = mapOf(
             today to listOf(AppUsageSummary("com.social.app", "Social App", 35, 35 * 60_000L, false))
         )
+        usageGateway.zeroUsageDates = setOf(yesterday)
         val populated = usageRepo.refreshUsageData()
         assertFalse(populated.isDataUnavailable)
         assertEquals(35, populated.todaySummary?.totalObservedMinutes)
         assertEquals(2, usageGateway.launchableAppsCalls)
+        assertEquals(
+            SnapshotCompleteness.ZERO_USAGE,
+            populated.sevenDayHistory.first { it.localDate == yesterday.toString() }.completeness
+        )
+
+        // Concurrent forced refreshes coalesce safely
+        val results = listOf(
+            async { usageRepo.refreshUsageData(forceRefresh = true) },
+            async { usageRepo.refreshUsageData(forceRefresh = true) }
+        ).awaitAll()
+        assertEquals(results[0].todaySummary?.totalObservedMinutes, results[1].todaySummary?.totalObservedMinutes)
 
         // Disable & delete
         usageRepo.disableAndDeleteUsageData()
@@ -182,7 +220,8 @@ class PersistenceAndExportTest {
     @Test
     fun `csv export, privacy-safe share formatter, datastore prefs, and full wipe work`() = runTest {
         val focusRepo = FocusRepository(db, prefs, clock)
-        val dataRepo = DataManagementRepository(db, prefs, clock)
+        val usageRepo = UsageRepository(db, prefs, usageGateway, clock)
+        val dataRepo = DataManagementRepository(db, prefs, clock, context, usageRepo)
 
         focusRepo.completeOnboarding("Sam", 50, UserIntention.STUDYING)
         prefs.setThemePreference(ThemePreference.DARK)
@@ -213,5 +252,7 @@ class PersistenceAndExportTest {
         dataRepo.deleteAllLocalData()
         assertNull(focusRepo.userProfile.first())
         assertFalse(prefs.onboardingCompleted.first())
+        assertTrue(db.rewardLedgerDao().countBySourceSince("SESSION", 0L) == 0)
     }
 }
+

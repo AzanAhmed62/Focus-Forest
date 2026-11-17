@@ -6,17 +6,21 @@ import com.example.data.local.db.FocusForestDatabase
 import com.example.data.local.db.entities.AppUsageItemEntity
 import com.example.data.local.db.entities.AppUsageSnapshotEntity
 import com.example.domain.engine.UsageAnalyticsEngine
-import com.example.domain.model.AppUsageSummary
 import com.example.domain.model.DailyUsageSummary
 import com.example.domain.model.LaunchableAppInfo
+import com.example.domain.model.SnapshotCompleteness
 import com.example.domain.model.UsageDashboardState
 import com.example.domain.model.UsagePermissionStatus
+import com.example.domain.model.UsageQueryResult
 import com.example.platform.usage.UsageStatsGateway
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
@@ -27,31 +31,91 @@ class UsageRepository(
     private val clockProvider: ClockProvider
 ) {
     private val usageDao = db.usageDao()
+    private val refreshMutex = Mutex()
+    private var inFlightRefresh: CompletableDeferred<UsageDashboardState>? = null
+    private var lastCacheWallMs: Long = -1L
 
     private val _dashboardState = MutableStateFlow(UsageDashboardState())
     val dashboardState: StateFlow<UsageDashboardState> = _dashboardState.asStateFlow()
 
-    suspend fun refreshUsageData(): UsageDashboardState = withContext(Dispatchers.IO) {
+    companion object {
+        private const val CACHE_TTL_MS = 30_000L
+    }
+
+    suspend fun refreshUsageData(forceRefresh: Boolean = false): UsageDashboardState {
+        val nowCheckMs = clockProvider.nowWallClockMs()
+        val cached = _dashboardState.value
+        if (!forceRefresh &&
+            lastCacheWallMs > 0L &&
+            (nowCheckMs - lastCacheWallMs) in 0L..CACHE_TTL_MS &&
+            cached.lastRefreshedMs != null
+        ) {
+            return cached
+        }
+
+        var existingDeferred: CompletableDeferred<UsageDashboardState>? = null
+        var ownerDeferred: CompletableDeferred<UsageDashboardState>? = null
+
+        refreshMutex.withLock {
+            val active = inFlightRefresh
+            if (active != null && active.isActive) {
+                existingDeferred = active
+            } else {
+                val created = CompletableDeferred<UsageDashboardState>()
+                inFlightRefresh = created
+                ownerDeferred = created
+            }
+        }
+
+        existingDeferred?.let { return it.await() }
+        val deferred = ownerDeferred!!
+
+        return try {
+            _dashboardState.value = _dashboardState.value.copy(isRefreshing = true)
+            val result = performRefreshInternal()
+            lastCacheWallMs = clockProvider.nowWallClockMs()
+            _dashboardState.value = result
+            deferred.complete(result)
+            result
+        } catch (t: Throwable) {
+            val fallback = _dashboardState.value.copy(
+                isRefreshing = false,
+                queryErrorMessage = t.message ?: "Unable to refresh usage history."
+            )
+            _dashboardState.value = fallback
+            deferred.complete(fallback)
+            fallback
+        } finally {
+            refreshMutex.withLock {
+                if (inFlightRefresh === deferred) {
+                    inFlightRefresh = null
+                }
+            }
+        }
+    }
+
+    private suspend fun performRefreshInternal(): UsageDashboardState = withContext(Dispatchers.IO) {
         val permissionStatus = gateway.checkUsagePermission()
         val trackingEnabled = prefs.usageTrackingEnabled.first()
         val monitoredPackages = prefs.monitoredPackages.first()
+        val dailyBudgetMinutes = prefs.dailyUsageBudgetMinutes.first()
         val today = clockProvider.todayLocalDate()
         val nowMs = clockProvider.nowWallClockMs()
 
         if (permissionStatus != UsagePermissionStatus.GRANTED) {
-            val state = UsageDashboardState(
+            return@withContext UsageDashboardState(
                 permissionStatus = UsagePermissionStatus.DENIED,
                 isTrackingEnabled = trackingEnabled,
                 isDataUnavailable = true,
+                todayCompleteness = SnapshotCompleteness.UNAVAILABLE,
                 monitoredPackages = monitoredPackages,
                 availableLaunchableApps = emptyList(),
+                dailyUsageBudgetMinutes = dailyBudgetMinutes,
+                isRefreshing = false,
                 lastRefreshedMs = nowMs
             )
-            _dashboardState.value = state
-            return@withContext state
         }
 
-        // If user granted permission in system settings, ensure tracking flag reflects consent if accepted
         val effectiveTrackingEnabled = if (prefs.usageDisclosureAccepted.first()) {
             if (!trackingEnabled) {
                 prefs.setUsageTrackingEnabled(true)
@@ -62,16 +126,17 @@ class UsageRepository(
         }
 
         if (!effectiveTrackingEnabled) {
-            val state = UsageDashboardState(
+            return@withContext UsageDashboardState(
                 permissionStatus = UsagePermissionStatus.GRANTED,
                 isTrackingEnabled = false,
                 isDataUnavailable = true,
+                todayCompleteness = SnapshotCompleteness.UNAVAILABLE,
                 monitoredPackages = monitoredPackages,
                 availableLaunchableApps = emptyList(),
+                dailyUsageBudgetMinutes = dailyBudgetMinutes,
+                isRefreshing = false,
                 lastRefreshedMs = nowMs
             )
-            _dashboardState.value = state
-            return@withContext state
         }
 
         val launchableApps: List<LaunchableAppInfo> = runCatching {
@@ -79,22 +144,29 @@ class UsageRepository(
         }.getOrDefault(emptyList())
         val iconByPkg = launchableApps.associate { it.packageName to it.icon }
 
-        // Query today and up to 7 prior days from Android UsageStatsManager
         val summariesByDate = linkedMapOf<LocalDate, DailyUsageSummary>()
-        for (offset in 0L..7L) {
+        var latestErrorMessage: String? = null
+
+        // Query today and up to 14 prior days so 7v7 completed-week baselines work right away when Android retains data
+        for (offset in 0L..14L) {
             val date = today.minusDays(offset)
-            val rawItems = gateway.queryDailyForegroundUsage(date, monitoredPackages, launchableApps)
-            val dailySummary = UsageAnalyticsEngine.buildDailySummary(date, rawItems, monitoredPackages)
+            val queryResult = gateway.queryDailyForegroundUsageResult(date, monitoredPackages, launchableApps)
+            if (queryResult is UsageQueryResult.Failure && latestErrorMessage == null) {
+                latestErrorMessage = queryResult.message
+            }
+            val dailySummary = UsageAnalyticsEngine.buildDailySummary(date, queryResult, monitoredPackages)
             summariesByDate[date] = dailySummary
 
-            // Persist local snapshot to Room
             if (dailySummary.hasUsableData) {
                 val snapshotEntity = AppUsageSnapshotEntity(
                     localDate = date.toString(),
                     totalObservedMinutes = dailySummary.totalObservedMinutes,
                     monitoredAppsMinutes = dailySummary.monitoredAppsMinutes,
                     hasUsableData = true,
-                    capturedAtWallMs = nowMs
+                    capturedAtWallMs = nowMs,
+                    completeness = dailySummary.completeness.name,
+                    totalObservedMillis = dailySummary.totalObservedMillis,
+                    monitoredAppsMillis = dailySummary.monitoredAppsMillis
                 )
                 val itemEntities = dailySummary.topApps.map { app ->
                     AppUsageItemEntity(
@@ -110,18 +182,26 @@ class UsageRepository(
             }
         }
 
-        // Merge with any previously stored Room snapshots (for historical baseline beyond query retention)
+        // Merge with stored Room snapshots (for historical baseline beyond Android's query retention)
         val storedSnapshots = usageDao.getSnapshotsOnce()
         for (snap in storedSnapshots) {
             val parsedDate = runCatching { LocalDate.parse(snap.localDate) }.getOrNull() ?: continue
             val existing = summariesByDate[parsedDate]
             if ((existing == null || !existing.hasUsableData) && snap.hasUsableData) {
+                val storedCompleteness = runCatching {
+                    SnapshotCompleteness.valueOf(snap.completeness)
+                }.getOrDefault(
+                    if (parsedDate == today) SnapshotCompleteness.PARTIAL_TODAY else SnapshotCompleteness.COMPLETE
+                )
                 summariesByDate[parsedDate] = DailyUsageSummary(
                     localDate = snap.localDate,
                     totalObservedMinutes = snap.totalObservedMinutes,
                     monitoredAppsMinutes = snap.monitoredAppsMinutes,
                     hasUsableData = true,
-                    topApps = emptyList()
+                    topApps = emptyList(),
+                    totalObservedMillis = if (snap.totalObservedMillis > 0L) snap.totalObservedMillis else snap.totalObservedMinutes * 60_000L,
+                    monitoredAppsMillis = if (snap.monitoredAppsMillis > 0L) snap.monitoredAppsMillis else snap.monitoredAppsMinutes * 60_000L,
+                    completeness = storedCompleteness
                 )
             }
         }
@@ -139,34 +219,42 @@ class UsageRepository(
                 localDate = d.toString(),
                 totalObservedMinutes = 0,
                 monitoredAppsMinutes = 0,
-                hasUsableData = false
+                hasUsableData = false,
+                completeness = SnapshotCompleteness.UNAVAILABLE
             )
         }
 
         val baselineStatus = UsageAnalyticsEngine.computeBaselineStatus(
             todayDate = today,
             summariesByDate = summariesByDate,
-            useMonitoredSubset = monitoredPackages.isNotEmpty()
+            useMonitoredSubset = monitoredPackages.isNotEmpty(),
+            dailyBudgetMinutes = dailyBudgetMinutes
         )
 
-        val state = UsageDashboardState(
+        val todayCompleteness = todaySummary?.completeness ?: SnapshotCompleteness.UNAVAILABLE
+        val isUnavailable = todaySummary == null || !todaySummary.hasUsableData
+
+        UsageDashboardState(
             permissionStatus = UsagePermissionStatus.GRANTED,
             isTrackingEnabled = true,
-            isDataUnavailable = todaySummary == null || !todaySummary.hasUsableData,
+            isDataUnavailable = isUnavailable,
+            todayCompleteness = todayCompleteness,
             todaySummary = todaySummary,
             sevenDayHistory = sevenDayHistory,
             baselineStatus = baselineStatus,
             monitoredPackages = monitoredPackages,
             availableLaunchableApps = launchableApps,
+            dailyUsageBudgetMinutes = dailyBudgetMinutes,
+            queryErrorMessage = latestErrorMessage,
+            isRefreshing = false,
             lastRefreshedMs = nowMs
         )
-        _dashboardState.value = state
-        state
     }
 
     suspend fun acceptDisclosure() {
         prefs.setUsageDisclosureAccepted(true)
         prefs.setUsageTrackingEnabled(true)
+        resetInMemoryCache()
     }
 
     suspend fun toggleMonitoredPackage(packageName: String) {
@@ -177,7 +265,12 @@ class UsageRepository(
             current.add(packageName)
         }
         prefs.setMonitoredPackages(current)
-        refreshUsageData()
+        refreshUsageData(forceRefresh = true)
+    }
+
+    suspend fun setDailyUsageBudget(minutes: Int) {
+        prefs.setDailyUsageBudgetMinutes(minutes)
+        refreshUsageData(forceRefresh = true)
     }
 
     suspend fun disableAndDeleteUsageData() {
@@ -185,6 +278,12 @@ class UsageRepository(
         prefs.setUsageDisclosureAccepted(false)
         prefs.setMonitoredPackages(emptySet())
         usageDao.clearAllUsageData()
-        refreshUsageData()
+        resetInMemoryCache()
+        refreshUsageData(forceRefresh = true)
+    }
+
+    fun resetInMemoryCache() {
+        lastCacheWallMs = -1L
+        _dashboardState.value = UsageDashboardState()
     }
 }

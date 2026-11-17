@@ -1,5 +1,6 @@
 package com.example.data.local.db.entities
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -56,7 +57,13 @@ data class AppUsageSnapshotEntity(
     val totalObservedMinutes: Int,
     val monitoredAppsMinutes: Int,
     val hasUsableData: Boolean,
-    val capturedAtWallMs: Long
+    val capturedAtWallMs: Long,
+    @ColumnInfo(defaultValue = "COMPLETE")
+    val completeness: String = "COMPLETE",
+    @ColumnInfo(defaultValue = "0")
+    val totalObservedMillis: Long = 0L,
+    @ColumnInfo(defaultValue = "0")
+    val monitoredAppsMillis: Long = 0L
 )
 
 @Entity(
@@ -89,7 +96,9 @@ data class ChallengeEntity(
     val rewardSeeds: Int,
     val periodKey: String,
     val createdAtMs: Long,
-    val targetPackageName: String?
+    val targetPackageName: String?,
+    @ColumnInfo(defaultValue = "0")
+    val isArchived: Boolean = false
 )
 
 @Entity(tableName = "challenge_progress")
@@ -143,4 +152,14 @@ data class OwnedItemEntity(
     @PrimaryKey val itemId: String,
     val acquiredAtMs: Long,
     val isEquipped: Boolean
+)
+
+@Entity(tableName = "reward_ledger")
+data class RewardLedgerEntity(
+    @PrimaryKey val rewardKey: String,
+    val sourceType: String,
+    val sourceId: String,
+    val xpDelta: Int,
+    val seedsDelta: Int,
+    val createdAtMs: Long
 )

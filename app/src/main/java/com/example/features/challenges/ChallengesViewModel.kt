@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.core.di.AppContainer
+import com.example.data.repository.ChallengeMutationResult
 import com.example.domain.engine.ChallengeEngine
 import com.example.domain.model.ChallengeItem
 import com.example.domain.model.ChallengeMetricType
@@ -11,7 +12,6 @@ import com.example.domain.model.ChallengePeriod
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -21,11 +21,15 @@ data class ChallengesUiState(
     val dailyChallenges: List<ChallengeItem> = emptyList(),
     val weeklyChallenges: List<ChallengeItem> = emptyList(),
     val customChallenges: List<ChallengeItem> = emptyList(),
-    val showCreateDialog: Boolean = false,
+    val showCreateOrEditDialog: Boolean = false,
+    val editingChallengeId: String? = null,
     val newTitle: String = "",
     val newDescription: String = "",
     val newMetricType: ChallengeMetricType = ChallengeMetricType.FOCUS_MINUTES,
-    val newTargetValue: Int = 60
+    val newTargetValue: Int = 60,
+    val dialogValidationError: String? = null,
+    val pendingDeleteChallenge: ChallengeItem? = null,
+    val actionMessage: String? = null
 )
 
 class ChallengesViewModel(
@@ -61,15 +65,46 @@ class ChallengesViewModel(
     }
 
     fun openCreateDialog() {
-        dialogState.update { it.copy(showCreateDialog = true) }
+        dialogState.update {
+            it.copy(
+                showCreateOrEditDialog = true,
+                editingChallengeId = null,
+                newTitle = "",
+                newDescription = "",
+                newMetricType = ChallengeMetricType.FOCUS_MINUTES,
+                newTargetValue = 60,
+                dialogValidationError = null
+            )
+        }
     }
 
-    fun dismissCreateDialog() {
-        dialogState.update { it.copy(showCreateDialog = false) }
+    fun openEditDialog(challenge: ChallengeItem) {
+        if (!challenge.isCustom || challenge.rewardClaimed) return
+        dialogState.update {
+            it.copy(
+                showCreateOrEditDialog = true,
+                editingChallengeId = challenge.id,
+                newTitle = challenge.title,
+                newDescription = challenge.description,
+                newMetricType = challenge.metricType,
+                newTargetValue = challenge.targetValue,
+                dialogValidationError = null
+            )
+        }
+    }
+
+    fun dismissDialog() {
+        dialogState.update {
+            it.copy(
+                showCreateOrEditDialog = false,
+                editingChallengeId = null,
+                dialogValidationError = null
+            )
+        }
     }
 
     fun updateNewTitle(value: String) {
-        dialogState.update { it.copy(newTitle = value.take(40)) }
+        dialogState.update { it.copy(newTitle = value.take(40), dialogValidationError = null) }
     }
 
     fun updateNewDescription(value: String) {
@@ -77,33 +112,103 @@ class ChallengesViewModel(
     }
 
     fun selectNewMetricType(type: ChallengeMetricType) {
-        val defaultTarget = if (type == ChallengeMetricType.FOCUS_MINUTES) 60 else 3
-        dialogState.update { it.copy(newMetricType = type, newTargetValue = defaultTarget) }
+        if (dialogState.value.editingChallengeId != null) return
+        val defaultTarget = when (type) {
+            ChallengeMetricType.FOCUS_MINUTES -> 60
+            ChallengeMetricType.WEEKLY_FOCUS_GOAL -> 180
+            ChallengeMetricType.DAILY_USAGE_BUDGET -> 3
+            ChallengeMetricType.USAGE_REDUCTION_PERCENT -> 10
+            else -> 3
+        }
+        dialogState.update {
+            it.copy(
+                newMetricType = type,
+                newTargetValue = defaultTarget,
+                dialogValidationError = null
+            )
+        }
     }
 
     fun updateNewTargetValue(value: Int) {
-        dialogState.update { it.copy(newTargetValue = value) }
+        dialogState.update { it.copy(newTargetValue = value, dialogValidationError = null) }
     }
 
-    fun createPersonalChallenge() {
+    fun savePersonalChallenge() {
         val snap = dialogState.value
+        val editingId = snap.editingChallengeId
         viewModelScope.launch {
-            container.challengeRepository.createCustomPersonalChallenge(
-                title = snap.newTitle,
-                description = snap.newDescription,
-                metricType = snap.newMetricType,
-                targetValue = snap.newTargetValue
-            )
-            val baseline = container.usageRepository.dashboardState.value.baselineStatus
-            container.challengeRepository.refreshProgress(baseline)
+            val result = if (editingId == null) {
+                container.challengeRepository.createCustomPersonalChallenge(
+                    title = snap.newTitle,
+                    description = snap.newDescription,
+                    metricType = snap.newMetricType,
+                    targetValue = snap.newTargetValue
+                )
+            } else {
+                container.challengeRepository.editCustomPersonalChallenge(
+                    challengeId = editingId,
+                    newTitle = snap.newTitle,
+                    newDescription = snap.newDescription,
+                    newTargetValue = snap.newTargetValue
+                )
+            }
+
+            when (result) {
+                is ChallengeMutationResult.ValidationError -> {
+                    dialogState.update { it.copy(dialogValidationError = result.message) }
+                }
+                is ChallengeMutationResult.Rejected -> {
+                    dialogState.update { it.copy(dialogValidationError = result.message) }
+                }
+                ChallengeMutationResult.Success -> {
+                    val baseline = container.usageRepository.dashboardState.value.baselineStatus
+                    container.challengeRepository.refreshProgress(baseline)
+                    dialogState.update {
+                        it.copy(
+                            showCreateOrEditDialog = false,
+                            editingChallengeId = null,
+                            newTitle = "",
+                            newDescription = "",
+                            dialogValidationError = null
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun requestDeleteChallenge(challenge: ChallengeItem) {
+        dialogState.update { it.copy(pendingDeleteChallenge = challenge) }
+    }
+
+    fun dismissDeleteDialog() {
+        dialogState.update { it.copy(pendingDeleteChallenge = null) }
+    }
+
+    fun confirmDeleteChallenge() {
+        val target = dialogState.value.pendingDeleteChallenge ?: return
+        viewModelScope.launch {
+            val result = container.challengeRepository.deleteOrArchiveCustomChallenge(target.id)
+            val msg = when (result) {
+                ChallengeMutationResult.Success -> if (target.rewardClaimed) {
+                    "Archived completed challenge."
+                } else {
+                    "Deleted personal challenge."
+                }
+                is ChallengeMutationResult.Rejected -> result.message
+                is ChallengeMutationResult.ValidationError -> result.message
+            }
             dialogState.update {
                 it.copy(
-                    showCreateDialog = false,
-                    newTitle = "",
-                    newDescription = ""
+                    pendingDeleteChallenge = null,
+                    actionMessage = msg
                 )
             }
         }
+    }
+
+    fun clearActionMessage() {
+        dialogState.update { it.copy(actionMessage = null) }
     }
 
     class Factory(private val container: AppContainer) : ViewModelProvider.Factory {

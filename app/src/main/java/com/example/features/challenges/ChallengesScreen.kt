@@ -3,6 +3,8 @@ package com.example.features.challenges
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,11 +17,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.LocalCafe
 import androidx.compose.material.icons.rounded.Park
 import androidx.compose.material.icons.rounded.Shield
@@ -27,18 +33,25 @@ import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +59,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.domain.engine.ChallengeEngine
 import com.example.domain.model.ChallengeIconType
 import com.example.domain.model.ChallengeItem
 import com.example.domain.model.ChallengeMetricType
@@ -56,28 +70,50 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChallengesScreen(
     viewModel: ChallengesViewModel
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    if (state.showCreateDialog) {
+    LaunchedEffect(state.actionMessage) {
+        val msg = state.actionMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(msg)
+        viewModel.clearActionMessage()
+    }
+
+    if (state.showCreateOrEditDialog) {
+        val isEditing = state.editingChallengeId != null
+        val (minBound, maxBound, unitLabel) = ChallengeEngine.targetBoundsFor(state.newMetricType)
         AlertDialog(
-            onDismissRequest = { viewModel.dismissCreateDialog() },
-            title = { Text("Create Personal Challenge") },
+            onDismissRequest = { viewModel.dismissDialog() },
+            title = { Text(if (isEditing) "Edit Personal Challenge" else "Create Personal Challenge") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     OutlinedTextField(
                         value = state.newTitle,
                         onValueChange = viewModel::updateNewTitle,
                         label = { Text("Goal title") },
                         placeholder = { Text("e.g. Weekend Writing Sprint") },
                         singleLine = true,
+                        isError = state.dialogValidationError != null,
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("custom_challenge_title_input")
                     )
+                    state.dialogValidationError?.let { err ->
+                        Text(
+                            text = err,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.testTag("custom_challenge_validation_error")
+                        )
+                    }
                     OutlinedTextField(
                         value = state.newDescription,
                         onValueChange = viewModel::updateNewDescription,
@@ -85,50 +121,101 @@ fun ChallengesScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = state.newMetricType == ChallengeMetricType.FOCUS_MINUTES,
-                            onClick = { viewModel.selectNewMetricType(ChallengeMetricType.FOCUS_MINUTES) },
-                            label = { Text("Focus Minutes") }
-                        )
-                        FilterChip(
-                            selected = state.newMetricType == ChallengeMetricType.COMPLETED_SESSIONS,
-                            onClick = { viewModel.selectNewMetricType(ChallengeMetricType.COMPLETED_SESSIONS) },
-                            label = { Text("Sessions") }
-                        )
+                    if (!isEditing) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            listOf(
+                                ChallengeMetricType.FOCUS_MINUTES to "Minutes",
+                                ChallengeMetricType.COMPLETED_SESSIONS to "Sessions",
+                                ChallengeMetricType.DEEP_WORK_SESSIONS to "Deep Work",
+                                ChallengeMetricType.DAILY_USAGE_BUDGET to "Usage Budget"
+                            ).forEach { (metric, label) ->
+                                FilterChip(
+                                    selected = state.newMetricType == metric,
+                                    onClick = { viewModel.selectNewMetricType(metric) },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
                     }
-                    val maxRange = if (state.newMetricType == ChallengeMetricType.FOCUS_MINUTES) 300f else 15f
-                    val minRange = if (state.newMetricType == ChallengeMetricType.FOCUS_MINUTES) 15f else 1f
                     Text(
-                        text = "Target: ${state.newTargetValue} " +
-                            if (state.newMetricType == ChallengeMetricType.FOCUS_MINUTES) "minutes" else "sessions",
+                        text = "Target: ${state.newTargetValue} $unitLabel",
                         style = MaterialTheme.typography.titleSmall
                     )
                     Slider(
-                        value = state.newTargetValue.toFloat().coerceIn(minRange, maxRange),
+                        value = state.newTargetValue.toFloat().coerceIn(minBound.toFloat(), maxBound.toFloat()),
                         onValueChange = { viewModel.updateNewTargetValue(it.toInt()) },
-                        valueRange = minRange..maxRange
+                        valueRange = minBound.toFloat()..maxBound.toFloat()
                     )
                 }
             },
             confirmButton = {
                 Button(
-                    onClick = { viewModel.createPersonalChallenge() },
+                    onClick = { viewModel.savePersonalChallenge() },
                     modifier = Modifier.testTag("save_custom_challenge_button")
                 ) {
-                    Text("Create Goal")
+                    Text(if (isEditing) "Save Changes" else "Create Goal")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissCreateDialog() }) {
+                TextButton(onClick = { viewModel.dismissDialog() }) {
                     Text("Cancel")
                 }
             }
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    state.pendingDeleteChallenge?.let { target ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissDeleteDialog() },
+            title = {
+                Text(if (target.rewardClaimed) "Archive completed challenge?" else "Delete personal challenge?")
+            },
+            text = {
+                Text(
+                    if (target.rewardClaimed) {
+                        "\"${target.title}\" already granted rewards and will be archived from your active list while preserving your reward ledger."
+                    } else {
+                        "Delete \"${target.title}\" permanently? No XP or seeds have been claimed yet."
+                    }
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmDeleteChallenge() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_delete_challenge_button")
+                ) {
+                    Text(if (target.rewardClaimed) "Archive" else "Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissDeleteDialog() }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { viewModel.openCreateDialog() },
+                modifier = Modifier.testTag("add_custom_challenge_fab")
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = "Create personal challenge")
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            contentAlignment = Alignment.TopCenter
+        ) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -139,7 +226,7 @@ fun ChallengesScreen(
                 item {
                     Text("Challenges", style = MaterialTheme.typography.headlineLarge)
                     Text(
-                        text = "Steady, achievable goals tied directly to your completed sessions and usage baseline.",
+                        text = "Steady, achievable goals tied directly to your completed sessions and completed-day usage baseline.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -157,7 +244,7 @@ fun ChallengesScreen(
                     }
                 } else {
                     items(state.dailyChallenges, key = { it.id }) { challenge ->
-                        ChallengeCard(challenge)
+                        ChallengeCard(challenge = challenge)
                     }
                 }
 
@@ -166,7 +253,7 @@ fun ChallengesScreen(
                     Text("Weekly Challenges", style = MaterialTheme.typography.titleLarge)
                 }
                 items(state.weeklyChallenges, key = { it.id }) { challenge ->
-                    ChallengeCard(challenge)
+                    ChallengeCard(challenge = challenge)
                 }
 
                 if (state.customChallenges.isNotEmpty()) {
@@ -175,26 +262,24 @@ fun ChallengesScreen(
                         Text("Personal Goals", style = MaterialTheme.typography.titleLarge)
                     }
                     items(state.customChallenges, key = { it.id }) { challenge ->
-                        ChallengeCard(challenge)
+                        ChallengeCard(
+                            challenge = challenge,
+                            onEdit = { viewModel.openEditDialog(challenge) },
+                            onDelete = { viewModel.requestDeleteChallenge(challenge) }
+                        )
                     }
                 }
             }
-        }
-
-        FloatingActionButton(
-            onClick = { viewModel.openCreateDialog() },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(18.dp)
-                .testTag("add_custom_challenge_fab")
-        ) {
-            Icon(Icons.Rounded.Add, contentDescription = "Create personal challenge")
         }
     }
 }
 
 @Composable
-private fun ChallengeCard(challenge: ChallengeItem) {
+private fun ChallengeCard(
+    challenge: ChallengeItem,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
+) {
     val isDone = challenge.status == ChallengeStatus.COMPLETED
     val icon = when (challenge.iconType) {
         ChallengeIconType.TIMER -> Icons.Rounded.Timer
@@ -203,6 +288,12 @@ private fun ChallengeCard(challenge: ChallengeItem) {
         ChallengeIconType.SUNRISE -> Icons.Rounded.WbSunny
         ChallengeIconType.SHIELD_LEAF -> Icons.Rounded.Shield
         ChallengeIconType.CUP_TEA -> Icons.Rounded.LocalCafe
+    }
+    val unitSuffix = when (challenge.metricType) {
+        ChallengeMetricType.FOCUS_MINUTES,
+        ChallengeMetricType.WEEKLY_FOCUS_GOAL -> "m"
+        ChallengeMetricType.USAGE_REDUCTION_PERCENT -> "%"
+        else -> ""
     }
 
     BotanicalCard(
@@ -236,16 +327,38 @@ private fun ChallengeCard(challenge: ChallengeItem) {
                 }
             }
             Spacer(Modifier.width(8.dp))
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.tertiaryContainer
-            ) {
-                Text(
-                    text = "+${challenge.rewardXp} XP",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer
+                ) {
+                    Text(
+                        text = "+${challenge.rewardXp} XP",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                if (challenge.isCustom && !challenge.rewardClaimed && onEdit != null) {
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.testTag("edit_challenge_${challenge.id}")
+                    ) {
+                        Icon(Icons.Rounded.Edit, contentDescription = "Edit challenge", modifier = Modifier.size(20.dp))
+                    }
+                }
+                if (challenge.isCustom && onDelete != null) {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.testTag("delete_challenge_${challenge.id}")
+                    ) {
+                        Icon(
+                            Icons.Rounded.DeleteOutline,
+                            contentDescription = if (challenge.rewardClaimed) "Archive challenge" else "Delete challenge",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
         }
 
@@ -263,7 +376,7 @@ private fun ChallengeCard(challenge: ChallengeItem) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "${challenge.currentProgress} / ${challenge.targetValue}",
+                text = "${challenge.currentProgress}$unitSuffix / ${challenge.targetValue}$unitSuffix",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

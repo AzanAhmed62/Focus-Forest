@@ -22,6 +22,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows
 import org.robolectric.annotation.Config
+import java.time.LocalDate
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -43,7 +44,7 @@ class FocusForestUiTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun `full onboarding to dashboard navigation and timer interaction works`() {
+    fun `full onboarding, focus chain, ambient audio, custom challenges, insights calendar, shop, and settings work`() {
         // Wait for initial onboarding screen
         composeRule.waitUntil(timeoutMillis = 5000) {
             composeRule.onAllNodesWithTag("onboarding_next_button").fetchSemanticsNodes().isNotEmpty()
@@ -72,7 +73,7 @@ class FocusForestUiTest {
         // Today dashboard shows Maya's intention card
         composeRule.onNodeWithText("Today's Focus Intention").assertIsDisplayed()
 
-        // Navigate to Focus tab & start/pause/abort timer
+        // Navigate to Focus tab -> single session start/pause/abort
         composeRule.onNodeWithTag("nav_focus").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("focus_lazy_column").performScrollToNode(hasTestTag("start_focus_button"))
@@ -86,33 +87,68 @@ class FocusForestUiTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("start_focus_button").assertIsDisplayed()
 
-        // Navigate to Challenges & create custom challenge
+        // Toggle Ambient Soundscape chip & Pomodoro Chain mode card
+        composeRule.onNodeWithTag("focus_lazy_column").performScrollToNode(hasTestTag("mode_pomodoro_chain"))
+        composeRule.onNodeWithTag("mode_pomodoro_chain").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("focus_lazy_column").performScrollToNode(hasTestTag("chain_auto_transition_switch"))
+        composeRule.onNodeWithTag("chain_auto_transition_switch").assertIsDisplayed()
+        composeRule.onNodeWithTag("focus_lazy_column").performScrollToNode(hasTestTag("mode_single_session"))
+        composeRule.onNodeWithTag("mode_single_session").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("focus_lazy_column").performScrollToNode(hasTestTag("ambient_chip_SOFT_RAIN"))
+        composeRule.onNodeWithTag("ambient_chip_SOFT_RAIN").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("ambient_chip_NONE").performClick()
+        composeRule.waitForIdle()
+
+        // Navigate to Challenges -> verify validation error on empty title, then create custom challenge
         composeRule.onNodeWithTag("nav_challenges").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("add_custom_challenge_fab").performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("save_custom_challenge_button").performClick()
+        composeRule.waitUntil(timeoutMillis = 3000) {
+            composeRule.onAllNodesWithTag("custom_challenge_validation_error").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("custom_challenge_validation_error").assertIsDisplayed()
+
         composeRule.onNodeWithTag("custom_challenge_title_input").performTextInput("Deep Study")
         composeRule.onNodeWithTag("save_custom_challenge_button").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Deep Study").assertIsDisplayed()
 
-        // Navigate to Insights (Focus & Usage tabs)
+        // Navigate to Insights -> filter 30D, inspect calendar cell selection, and check Usage tab
         composeRule.onNodeWithTag("nav_insights").performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("filter_THIRTY_DAYS").performClick()
+        composeRule.waitForIdle()
+        val todayTag = "calendar_day_${LocalDate.now()}"
+        composeRule.onNodeWithTag("insights_focus_lazy_column").performScrollToNode(hasTestTag(todayTag))
+        composeRule.onNodeWithTag(todayTag).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("insights_focus_lazy_column").performScrollToNode(hasTestTag("calendar_selected_date_summary"))
+        composeRule.onNodeWithTag("calendar_selected_date_summary").assertIsDisplayed()
+
         composeRule.onNodeWithTag("insights_tab_usage").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Usage Access is not enabled").assertIsDisplayed()
 
-        // Navigate to Forest & Virtual Shop
+        // Navigate to Forest & Virtual Shop -> test Owned filter + insufficient Leaf Points handling
         composeRule.onNodeWithTag("nav_forest").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("open_virtual_shop_button").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Botanical Shop").assertIsDisplayed()
+        composeRule.onNodeWithTag("shop_filter_owned").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("shop_filter_all").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("shop_back_button").performClick()
         composeRule.waitForIdle()
 
-        // Navigate back to Today & open Settings -> Theme -> Privacy
+        // Navigate back to Today & open Settings -> Theme -> Privacy -> Delete All Data reset check
         composeRule.onNodeWithTag("nav_today").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("today_settings_button").performClick()
@@ -126,3 +162,4 @@ class FocusForestUiTest {
         composeRule.onNodeWithText("Strict Local-First Architecture").assertIsDisplayed()
     }
 }
+

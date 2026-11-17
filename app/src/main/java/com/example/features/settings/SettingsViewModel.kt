@@ -9,7 +9,7 @@ import com.example.core.di.AppContainer
 import com.example.domain.model.NotificationPreferences
 import com.example.domain.model.ThemePreference
 import com.example.domain.model.UsagePermissionStatus
-import com.example.notifications.FocusReminderWorker
+import com.example.notifications.FocusWorkers
 import com.example.notifications.NotificationHelper
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val displayName: String = "",
     val dailyGoalMinutes: Int = 50,
+    val dailyUsageBudgetMinutes: Int = 120,
     val themePreference: ThemePreference = ThemePreference.SYSTEM,
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
     val usagePermissionStatus: UsagePermissionStatus = UsagePermissionStatus.DENIED,
@@ -49,6 +50,7 @@ class SettingsViewModel(
     val uiState: StateFlow<SettingsUiState> = combine(
         container.focusRepository.userProfile,
         container.preferencesDataStore.dailyGoalMinutes,
+        container.preferencesDataStore.dailyUsageBudgetMinutes,
         container.preferencesDataStore.themePreference,
         container.preferencesDataStore.notificationPreferences,
         container.preferencesDataStore.usageTrackingEnabled,
@@ -56,14 +58,16 @@ class SettingsViewModel(
     ) { values ->
         val profile = values[0] as com.example.domain.model.UserProfile?
         val goal = values[1] as Int
-        val theme = values[2] as ThemePreference
-        val notif = values[3] as NotificationPreferences
-        val usageEnabled = values[4] as Boolean
-        val dialogs = values[5] as SettingsUiState
+        val usageBudget = values[2] as Int
+        val theme = values[3] as ThemePreference
+        val notif = values[4] as NotificationPreferences
+        val usageEnabled = values[5] as Boolean
+        val dialogs = values[6] as SettingsUiState
 
         dialogs.copy(
             displayName = profile?.displayName ?: "",
             dailyGoalMinutes = goal,
+            dailyUsageBudgetMinutes = usageBudget,
             themePreference = theme,
             notificationPreferences = notif,
             usagePermissionStatus = container.usageStatsGateway.checkUsagePermission(),
@@ -92,6 +96,13 @@ class SettingsViewModel(
         }
     }
 
+    fun updateDailyUsageBudget(minutes: Int) {
+        viewModelScope.launch {
+            container.usageRepository.setDailyUsageBudget(minutes)
+            _toastEvents.emit("Daily screen-time budget updated.")
+        }
+    }
+
     fun setThemePreference(preference: ThemePreference) {
         viewModelScope.launch {
             container.preferencesDataStore.setThemePreference(preference)
@@ -101,7 +112,7 @@ class SettingsViewModel(
     fun updateNotificationPrefs(updated: NotificationPreferences) {
         viewModelScope.launch {
             container.preferencesDataStore.updateNotificationPreferences(updated)
-            FocusReminderWorker.syncSchedule(appContext, updated)
+            FocusWorkers.syncAllSchedules(appContext, updated)
         }
     }
 
@@ -153,7 +164,6 @@ class SettingsViewModel(
     fun confirmDeleteAllData(onResetComplete: () -> Unit) {
         viewModelScope.launch {
             container.dataManagementRepository.deleteAllLocalData()
-            FocusReminderWorker.syncSchedule(appContext, NotificationPreferences())
             localDialogs.update { it.copy(showDeleteAllDialog = false) }
             onResetComplete()
         }

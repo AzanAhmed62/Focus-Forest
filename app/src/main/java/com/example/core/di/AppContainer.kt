@@ -10,8 +10,11 @@ import com.example.data.local.db.FocusForestDatabase
 import com.example.data.repository.ChallengeRepository
 import com.example.data.repository.DataManagementRepository
 import com.example.data.repository.FocusRepository
+import com.example.data.repository.RewardAuthority
 import com.example.data.repository.ShopAndForestRepository
 import com.example.data.repository.UsageRepository
+import com.example.platform.audio.AmbientAudioController
+import com.example.platform.audio.AndroidAmbientAudioController
 import com.example.platform.usage.AndroidUsageStatsGateway
 import com.example.platform.usage.UsageStatsGateway
 
@@ -21,14 +24,21 @@ class AppContainer(
     val database: FocusForestDatabase = FocusForestDatabase.getInstance(context.applicationContext),
     val preferencesDataStore: UserPreferencesDataStore = UserPreferencesDataStore(context.applicationContext),
     val usageStatsGateway: UsageStatsGateway = AndroidUsageStatsGateway(context.applicationContext, clockProvider),
-    val entitlementGateway: EntitlementGateway = LocalFreeEntitlementGateway()
+    val entitlementGateway: EntitlementGateway = LocalFreeEntitlementGateway(),
+    val ambientAudioController: AmbientAudioController = AndroidAmbientAudioController()
 ) {
+    private val appContext: Context = context.applicationContext
+
+    val rewardAuthority: RewardAuthority by lazy {
+        RewardAuthority(database, clockProvider)
+    }
+
     val focusRepository: FocusRepository by lazy {
-        FocusRepository(database, preferencesDataStore, clockProvider)
+        FocusRepository(database, preferencesDataStore, clockProvider, rewardAuthority)
     }
 
     val challengeRepository: ChallengeRepository by lazy {
-        ChallengeRepository(database, clockProvider)
+        ChallengeRepository(database, clockProvider, rewardAuthority)
     }
 
     val usageRepository: UsageRepository by lazy {
@@ -40,6 +50,13 @@ class AppContainer(
     }
 
     val dataManagementRepository: DataManagementRepository by lazy {
-        DataManagementRepository(database, preferencesDataStore, clockProvider)
+        DataManagementRepository(
+            db = database,
+            prefs = preferencesDataStore,
+            clockProvider = clockProvider,
+            appContext = appContext,
+            usageRepository = usageRepository,
+            ambientAudioController = ambientAudioController
+        )
     }
 }

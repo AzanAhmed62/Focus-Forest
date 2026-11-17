@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Eco
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -97,7 +98,8 @@ fun ShopScreen(
                             Text(
                                 text = "${state.leafPointsBalance} pts",
                                 style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.testTag("shop_leaf_points_balance")
                             )
                         }
                     }
@@ -135,15 +137,27 @@ fun ShopScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         FilterChip(
-                            selected = state.selectedCategory == null,
-                            onClick = { viewModel.selectCategory(null) },
-                            label = { Text("All") }
+                            selected = state.selectedFilter == ShopFilterTab.ALL,
+                            onClick = { viewModel.selectFilter(ShopFilterTab.ALL) },
+                            label = { Text("All") },
+                            modifier = Modifier.testTag("shop_filter_all")
                         )
-                        ShopCategory.entries.forEach { cat ->
+                        FilterChip(
+                            selected = state.selectedFilter == ShopFilterTab.OWNED,
+                            onClick = { viewModel.selectFilter(ShopFilterTab.OWNED) },
+                            label = { Text("Owned") },
+                            modifier = Modifier.testTag("shop_filter_owned")
+                        )
+                        listOf(
+                            ShopFilterTab.THEME to ShopCategory.THEME.label,
+                            ShopFilterTab.AVATAR to ShopCategory.AVATAR.label,
+                            ShopFilterTab.DECORATION to ShopCategory.DECORATION.label,
+                            ShopFilterTab.ENVIRONMENT to ShopCategory.ENVIRONMENT.label
+                        ).forEach { (tab, label) ->
                             FilterChip(
-                                selected = state.selectedCategory == cat,
-                                onClick = { viewModel.selectCategory(cat) },
-                                label = { Text(cat.label) }
+                                selected = state.selectedFilter == tab,
+                                onClick = { viewModel.selectFilter(tab) },
+                                label = { Text(label) }
                             )
                         }
                     }
@@ -227,7 +241,14 @@ private fun ShopItemCard(
                 else -> {
                     Button(
                         onClick = onAction,
-                        enabled = canAfford,
+                        colors = if (canAfford) {
+                            ButtonDefaults.buttonColors()
+                        } else {
+                            ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
                         modifier = Modifier.testTag("shop_item_${item.id}")
                     ) {
                         Text("${item.costLeafPoints} pts")

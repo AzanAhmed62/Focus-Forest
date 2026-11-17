@@ -12,7 +12,9 @@ enum class ChallengeMetricType {
     DEEP_WORK_SESSIONS,
     POMODORO_SESSIONS,
     PLANNED_BREAKS,
-    USAGE_REDUCTION_PERCENT
+    USAGE_REDUCTION_PERCENT,
+    DAILY_USAGE_BUDGET,
+    WEEKLY_FOCUS_GOAL
 }
 
 enum class ChallengeStatus {
@@ -46,8 +48,12 @@ data class ChallengeItem(
     val createdAtMs: Long,
     val completedAtMs: Long?,
     val rewardClaimed: Boolean,
-    val targetPackageName: String? = null
+    val targetPackageName: String? = null,
+    val isArchived: Boolean = false
 ) {
     val progressFraction: Float
         get() = if (targetValue <= 0) 0f else (currentProgress.toFloat() / targetValue.toFloat()).coerceIn(0f, 1f)
+
+    val isCustom: Boolean
+        get() = period == ChallengePeriod.CUSTOM
 }

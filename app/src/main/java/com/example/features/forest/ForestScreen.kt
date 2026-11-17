@@ -39,8 +39,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.model.AchievementItem
+import com.example.domain.model.GrowthStage
 import com.example.domain.model.TreeSpecies
 import com.example.ui.components.BotanicalCard
+import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.ForestIllustrationCanvas
 import com.example.ui.components.StatPill
 
@@ -126,15 +128,63 @@ fun ForestScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(6.dp))
-                    val stageProgress = if (nextDelta == null) 1f
-                    else (forest.totalSeeds % 12) / 12f
+                    val nextStage = GrowthStage.entries.firstOrNull { it.minSeeds > forest.totalSeeds }
+                    val stageProgress = if (nextStage == null) {
+                        1f
+                    } else {
+                        val floor = forest.currentStage.minSeeds
+                        val span = (nextStage.minSeeds - floor).coerceAtLeast(1)
+                        ((forest.totalSeeds - floor).toFloat() / span.toFloat()).coerceIn(0.05f, 1f)
+                    }
                     LinearProgressIndicator(
-                        progress = { stageProgress.coerceIn(0.08f, 1f) },
+                        progress = { stageProgress },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(8.dp)
                             .clip(RoundedCornerShape(4.dp))
                     )
+                }
+            }
+
+            // Historical Forest Planting Timeline
+            item {
+                Text("Planting Timeline", style = MaterialTheme.typography.titleLarge)
+            }
+            if (forest.trees.isEmpty()) {
+                item {
+                    EmptyStateCard(
+                        icon = Icons.Rounded.Park,
+                        title = "No trees planted yet",
+                        subtitle = "Complete any focus session (Pomodoro, Deep Work, or Custom) to plant your first tree here."
+                    )
+                }
+            } else {
+                items(forest.trees.take(20), key = { it.id }) { tree ->
+                    BotanicalCard {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.Park, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(tree.species.displayName, style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        text = "${tree.plantedDate} • ${tree.focusMinutes} min focus",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Text(
+                                text = tree.species.scientificHint,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
             }
 

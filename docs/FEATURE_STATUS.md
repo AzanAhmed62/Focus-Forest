@@ -1,0 +1,16 @@
+# Feature Status
+
+| Area | Feature | Status | Notes |
+| :--- | :--- | :--- | :--- |
+| **Core Focus** | Single Session Timer (`Pomodoro`, `Deep Work`, `Custom`, `Short/Long Break`) | Implemented & Tested | Monotonic elapsed realtime tracking, reboot interruption guard, 1s UI ticker, completion retry card. |
+| **Core Focus** | Pomodoro Chain Mode | Implemented & Tested | Configurable sessions (1–8), focus/short/long break lengths, long-break cadence, manual vs auto-transition, persisted across process death. |
+| **Audio** | Procedural Ambient Soundscapes | Implemented & Tested | Pure offline `AudioTrack` PCM synthesizer (`Soft Rain`, `Forest Wind`, `Ocean Waves`, `Hearth Ember`, `Deep Focus Hum`), volume control, optional timer sync. Physical speaker validation pending real-device run. |
+| **Usage Insights** | Android UsageStats Integration | Implemented & Tested | Explicit opt-in disclosure, typed `UsageQueryResult`, exact millisecond aggregation preserving `<1m` apps, `ZERO_USAGE` vs `UNAVAILABLE` distinction, coalesced 30s cache, 14-day historical query + Room cache, daily budget tracker. |
+| **Usage Insights** | Honest Baseline Comparisons | Implemented & Tested | Partial today never compared against completed days; compares most recent completed day vs 7 prior completed days, plus 7-day-vs-7-day weekly comparison. |
+| **Analytics** | Focus Trends (`7D` / `30D` / `90D`), Peak Windows, Breakdown, Streak Calendar | Implemented & Tested | Genuine `startedAtWallMs` time-of-day buckets, monthly consistency %, month switching, interactive day detail inspection. |
+| **Gamification** | Transactional `RewardAuthority` & `RewardLedger` | Implemented & Tested | Idempotent session/challenge/achievement/streak credits; breaks earn 0 XP / 0 seeds / 0 trees; custom challenge rewards capped at 3/day. |
+| **Challenges** | Daily, Weekly & Custom Challenge CRUD | Implemented & Tested | Deterministic daily/weekly generation, custom input bounds, inline editing, deletion/archival preserving ledger auditability. |
+| **Forest & Shop** | Interactive Canvas Grove & Botanical Shop | Implemented & Tested | Real tree species placement, equipped environments & decorations, Leaf Points balance, `All` / `Owned` filters, insufficient points feedback. |
+| **Notifications** | Background Workers (`SessionCompletion`, `FocusReminder`, `WeeklySummary`) | Implemented & Tested | Stale ID guards, quiet hours enforcement, channel setup, central WorkManager cancel/sync. Physical Doze validation pending real-device run. |
+| **Data & Privacy** | Room v2 + `MIGRATION_1_2` + Privacy Controls + CSV Export + Full Wipe | Implemented & Tested | Verified schema migration `1 -> 2` preserving v1 rows; `allowBackup="false"`, zero network, atomic `deleteAllLocalData`. |
+| **Monetization** | Play Billing / Optional Cosmetic Packs | Scaffolded (`LocalFreeEntitlementGateway`) | Honest local-free entitlement abstraction with zero fake purchases or local unlock flags; Play Billing integration intentionally deferred for future release phase. |

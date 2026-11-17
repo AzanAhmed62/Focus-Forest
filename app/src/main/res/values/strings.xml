@@ -14,7 +14,7 @@
 
     <!-- Usage Access Disclosure -->
     <string name="usage_disclosure_title">Optional App Usage Insights</string>
-    <string name="usage_disclosure_body">Focus Forest can read Android foreground app usage totals so you can observe daily screen patterns and set personal reduction goals. All usage snapshots are processed and stored strictly on your device. They are never uploaded, sold, or shared with any server or ad network. You can skip this now and enable or delete it at any time in Settings.</string>
+    <string name="usage_disclosure_body">Focus Forest can read Android foreground app usage totals and launchable app names so you can choose specific apps to monitor, view daily habits, and compare completed days. This permission is completely optional—focus sessions, challenges, and your forest work without it. All usage data remains strictly in local device storage, is never uploaded or shared with analytics or ads, and can be paused or permanently deleted anytime in Settings.</string>
     <string name="usage_disclosure_agree">Review &amp; Open Usage Settings</string>
     <string name="usage_disclosure_skip">Skip for Now</string>
 

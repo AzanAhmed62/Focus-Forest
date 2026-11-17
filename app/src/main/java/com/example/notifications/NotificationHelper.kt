@@ -20,9 +20,9 @@ object NotificationHelper {
     const val CHANNEL_SESSION_COMPLETE = "focus_session_complete"
     const val CHANNEL_REMINDERS = "focus_gentle_reminders"
 
-    private const val ID_SESSION_COMPLETE = 1001
-    private const val ID_DAILY_REMINDER = 1002
-    private const val ID_WEEKLY_SUMMARY = 1003
+    const val ID_SESSION_COMPLETE = 1001
+    const val ID_DAILY_REMINDER = 1002
+    const val ID_WEEKLY_SUMMARY = 1003
 
     fun ensureChannels(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
@@ -72,11 +72,12 @@ object NotificationHelper {
         context: Context,
         title: String,
         body: String,
-        prefs: NotificationPreferences
-    ) {
-        if (!prefs.notificationsEnabled || !prefs.sessionCompletionEnabled) return
-        if (!hasNotificationPermission(context)) return
-        if (isInQuietHours(prefs)) return
+        prefs: NotificationPreferences,
+        nowTime: LocalTime = LocalTime.now()
+    ): Boolean {
+        if (!prefs.notificationsEnabled || !prefs.sessionCompletionEnabled) return false
+        if (!hasNotificationPermission(context)) return false
+        if (isInQuietHours(prefs, nowTime)) return false
 
         ensureChannels(context)
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -96,8 +97,16 @@ object NotificationHelper {
             .setContentIntent(pendingIntent)
             .build()
 
-        runCatching {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return false
+            }
             NotificationManagerCompat.from(context).notify(ID_SESSION_COMPLETE, notification)
+            true
+        } catch (_: SecurityException) {
+            false
         }
     }
 
@@ -106,11 +115,12 @@ object NotificationHelper {
         title: String,
         body: String,
         prefs: NotificationPreferences,
-        isWeekly: Boolean = false
-    ) {
-        if (!prefs.notificationsEnabled) return
-        if (!hasNotificationPermission(context)) return
-        if (isInQuietHours(prefs)) return
+        isWeekly: Boolean = false,
+        nowTime: LocalTime = LocalTime.now()
+    ): Boolean {
+        if (!prefs.notificationsEnabled) return false
+        if (!hasNotificationPermission(context)) return false
+        if (isInQuietHours(prefs, nowTime)) return false
 
         ensureChannels(context)
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -131,8 +141,16 @@ object NotificationHelper {
             .build()
 
         val id = if (isWeekly) ID_WEEKLY_SUMMARY else ID_DAILY_REMINDER
-        runCatching {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return false
+            }
             NotificationManagerCompat.from(context).notify(id, notification)
+            true
+        } catch (_: SecurityException) {
+            false
         }
     }
 }

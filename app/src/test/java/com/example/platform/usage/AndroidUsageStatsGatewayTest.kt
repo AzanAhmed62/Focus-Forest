@@ -1,12 +1,12 @@
 package com.example.platform.usage
 
 import android.app.AppOpsManager
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.os.Process
 import androidx.test.core.app.ApplicationProvider
 import com.example.core.time.ClockProvider
 import com.example.domain.model.UsagePermissionStatus
+import com.example.domain.model.UsageQueryResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -46,10 +46,14 @@ class AndroidUsageStatsGatewayTest {
         val gateway = AndroidUsageStatsGateway(context, FixedUsageClock())
         assertEquals(UsagePermissionStatus.DENIED, gateway.checkUsagePermission())
         assertTrue(gateway.queryDailyForegroundUsage(LocalDate.of(2026, 11, 16), emptySet()).isEmpty())
+        assertEquals(
+            UsageQueryResult.PermissionDenied,
+            gateway.queryDailyForegroundUsageResult(LocalDate.of(2026, 11, 16), emptySet(), emptyList())
+        )
     }
 
     @Test
-    fun `gateway returns empty list when granted but android reports no usage data`() {
+    fun `gateway returns SuccessZeroUsage when granted but android reports empty usage buckets`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
         val shadowAppOps = Shadows.shadowOf(appOps)
@@ -64,7 +68,14 @@ class AndroidUsageStatsGatewayTest {
         assertEquals(UsagePermissionStatus.GRANTED, gateway.checkUsagePermission())
         val usage = gateway.queryDailyForegroundUsage(LocalDate.of(2026, 11, 16), emptySet())
         assertTrue(usage.isEmpty())
+        val result = gateway.queryDailyForegroundUsageResult(LocalDate.of(2026, 11, 16), emptySet(), emptyList())
+        assertEquals(UsageQueryResult.SuccessZeroUsage(isPartialDay = true), result)
+
+        val futureResult = gateway.queryDailyForegroundUsageResult(LocalDate.of(2026, 11, 17), emptySet(), emptyList())
+        assertTrue(futureResult is UsageQueryResult.Unavailable)
+
         val apps = gateway.getLaunchableApps()
         assertTrue(apps.all { it.icon == null })
     }
 }
+

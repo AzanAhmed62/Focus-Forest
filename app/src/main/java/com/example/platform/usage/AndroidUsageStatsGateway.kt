@@ -17,6 +17,7 @@ import com.example.domain.engine.UsageAnalyticsEngine
 import com.example.domain.model.AppUsageSummary
 import com.example.domain.model.LaunchableAppInfo
 import com.example.domain.model.UsagePermissionStatus
+import com.example.domain.model.UsageQueryResult
 import java.time.LocalDate
 
 class AndroidUsageStatsGateway(
@@ -110,30 +111,58 @@ class AndroidUsageStatsGateway(
         monitoredPackages: Set<String>,
         preloadedLaunchableApps: List<LaunchableAppInfo>
     ): List<AppUsageSummary> {
+        return when (val result = queryDailyForegroundUsageResult(date, monitoredPackages, preloadedLaunchableApps)) {
+            is UsageQueryResult.SuccessWithData -> result.items
+            else -> emptyList()
+        }
+    }
+
+    override fun queryDailyForegroundUsageResult(
+        date: LocalDate,
+        monitoredPackages: Set<String>,
+        preloadedLaunchableApps: List<LaunchableAppInfo>
+    ): UsageQueryResult {
         if (checkUsagePermission() != UsagePermissionStatus.GRANTED) {
-            return emptyList()
+            return UsageQueryResult.PermissionDenied
         }
         val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
-            ?: return emptyList()
+            ?: return UsageQueryResult.Unavailable("Android UsageStatsManager is unavailable on this device.")
 
         val zoneId = clockProvider.zoneId()
+        val today = clockProvider.todayLocalDate()
+        if (date.isAfter(today)) {
+            return UsageQueryResult.Unavailable("Future date cannot contain usage history.")
+        }
+
         val nowMs = clockProvider.nowWallClockMs()
         val dayStartMs = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
-        val dayEndMs = minOf(
-            date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli(),
-            nowMs
-        )
-        if (dayEndMs <= dayStartMs) return emptyList()
+        val nextDayStartMs = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val isPartialDay = date == today
+        val dayEndMs = if (isPartialDay) minOf(nextDayStartMs, nowMs) else nextDayStartMs
+        if (dayEndMs <= dayStartMs) {
+            return if (isPartialDay) {
+                UsageQueryResult.SuccessZeroUsage(isPartialDay = true)
+            } else {
+                UsageQueryResult.Unavailable("Invalid day window for $date.")
+            }
+        }
 
-        val stats = runCatching {
+        val stats = try {
             usageStatsManager.queryUsageStats(
                 UsageStatsManager.INTERVAL_DAILY,
                 dayStartMs,
                 dayEndMs
             )
-        }.getOrNull().orEmpty()
+        } catch (t: Throwable) {
+            return UsageQueryResult.Failure(
+                message = "Unable to read Android usage statistics: ${t.message ?: "unexpected error"}",
+                cause = t
+            )
+        } ?: return UsageQueryResult.Unavailable("Android returned no usage buckets for $date.")
 
-        if (stats.isEmpty()) return emptyList()
+        if (stats.isEmpty()) {
+            return UsageQueryResult.SuccessZeroUsage(isPartialDay = isPartialDay)
+        }
 
         val launchableMap = preloadedLaunchableApps.associateBy { it.packageName }
         val launchablePackages = launchableMap.keys
@@ -146,12 +175,15 @@ class AndroidUsageStatsGateway(
             val fgMs = item.totalTimeInForeground
             if (fgMs <= 0L) continue
             if (!UsageAnalyticsEngine.isRelevantUserApp(pkg, selfPkg, launchablePackages)) continue
-            // Filter out buckets completely outside the requested window when timestamps are populated
             if (item.lastTimeStamp > 0L && item.lastTimeStamp < dayStartMs) continue
             aggregatedByPkg[pkg] = (aggregatedByPkg[pkg] ?: 0L) + fgMs
         }
 
-        return aggregatedByPkg.entries
+        if (aggregatedByPkg.isEmpty()) {
+            return UsageQueryResult.SuccessZeroUsage(isPartialDay = isPartialDay)
+        }
+
+        val items = aggregatedByPkg.entries
             .map { (pkg, fgMs) ->
                 val minutes = (fgMs / 60_000L).toInt()
                 val launchInfo = launchableMap[pkg]
@@ -166,8 +198,9 @@ class AndroidUsageStatsGateway(
                     icon = appIcon
                 )
             }
-            .filter { it.foregroundMinutes > 0 }
             .sortedByDescending { it.foregroundMillis }
+
+        return UsageQueryResult.SuccessWithData(items = items, isPartialDay = isPartialDay)
     }
 
     private fun resolveLabel(pm: PackageManager, pkg: String): String {

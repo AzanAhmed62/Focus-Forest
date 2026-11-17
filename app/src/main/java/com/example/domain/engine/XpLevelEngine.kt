@@ -17,11 +17,16 @@ data class LevelProgressInfo(
 
 object XpLevelEngine {
 
+    /**
+     * Computes direct session rewards.
+     * Restorative break sessions (SHORT_BREAK, LONG_BREAK) intentionally grant 0 XP and 0 seeds
+     * so breaks cannot be farmed; planned breaks can still advance planned-break challenges.
+     */
     fun calculateSessionReward(sessionType: SessionType, completedMinutes: Int): SessionReward {
-        if (completedMinutes <= 0) return SessionReward(xp = 0, seeds = 0)
+        if (completedMinutes <= 0 || sessionType.isBreak) return SessionReward(xp = 0, seeds = 0)
         return when (sessionType) {
-            SessionType.SHORT_BREAK -> SessionReward(xp = 10, seeds = 1)
-            SessionType.LONG_BREAK -> SessionReward(xp = 20, seeds = 1)
+            SessionType.SHORT_BREAK,
+            SessionType.LONG_BREAK -> SessionReward(xp = 0, seeds = 0)
             SessionType.POMODORO -> {
                 val baseXp = completedMinutes * 2
                 val seeds = (completedMinutes / 10).coerceAtLeast(1)

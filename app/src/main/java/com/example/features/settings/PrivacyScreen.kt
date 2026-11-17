@@ -2,7 +2,6 @@ package com.example.features.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -95,9 +94,10 @@ fun PrivacyScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "• No internet permission is requested in this release.\n" +
+                            text = "• No INTERNET permission is declared or used in this release.\n" +
+                                "• Android cloud backup and device transfer of local databases and preferences are disabled (allowBackup=false).\n" +
                                 "• No accounts, telemetry, remote analytics, or ad SDKs.\n" +
-                                "• Focus sessions, streaks, challenges, and Android usage snapshots remain strictly inside local device storage.\n" +
+                                "• Focus sessions, streaks, challenges, and Android usage snapshots remain strictly inside your device's private storage.\n" +
                                 "• Focus Forest is a wellness habit tool and does not diagnose, treat, or provide medical advice for ADHD, anxiety, or addiction.",
                             style = MaterialTheme.typography.bodyMedium
                         )

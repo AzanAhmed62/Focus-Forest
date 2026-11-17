@@ -1,0 +1,1095 @@
+FOCUS FOREST — PHASE 0.1
+
+ENGINEERING STABILIZATION, DIGITAL WELLNESS ACCURACY & FEATURE COMPLETION
+
+REPOSITORY:
+https://github.com/AzanAhmed62/Focus-Forest
+
+CURRENT BASELINE:
+main branch
+Inspected baseline commit:
+b35341ad80f3193c96d5442d1c4a5e88a0b0079a
+
+PROJECT:
+Focus Forest — Native Android Digital Wellness Challenger
+
+PLATFORM:
+Kotlin + Jetpack Compose + Android
+
+APPLICATION ID:
+com.azanahmed.focusforest
+
+YOUR ROLE:
+
+Act as a principal Android engineer, senior Kotlin developer, Android architecture reviewer, database engineer, digital wellness product engineer, privacy engineer, test engineer and product designer.
+
+You are continuing an existing application.
+
+This is not a new project.
+
+You must inspect the current source code, understand its architecture, preserve working implementations and improve them systematically.
+
+Do not delete the existing project or regenerate it from scratch.
+
+Do not replace working business logic with mock implementations.
+
+Do not focus exclusively on visual design.
+
+Our objective is to turn the existing AI-generated foundation into a reliable, high-quality, genuinely functional Android application that is suitable for further engineering and eventual Google Play publication.
+
+IMPORTANT:
+
+Use the full capabilities of your environment, including repository inspection, code editing, Android development documentation, dependency research, Gradle configuration, available build tools and automated testing.
+
+Where something cannot be verified or executed in your environment, explicitly document the limitation.
+
+Do not invent successful build results.
+
+==================================================
+
+1. DEVELOPMENT RULES AND SAFETY
+   ==================================================
+
+Before editing:
+
+1. Inspect the entire repository and current branch.
+2. Inspect the current commit and working-tree state.
+3. Read the project build configuration.
+4. Understand the existing package structure.
+5. Read all relevant Room entities, DAOs, repositories and domain engines.
+6. Inspect all existing feature screens and ViewModels.
+7. Inspect the current test suite.
+8. Identify the files that need modification.
+
+Create a new branch:
+
+phase-0.1/reliability-and-feature-completion
+
+Never force-push.
+
+Never erase existing Git history.
+
+Do not modify unrelated projects.
+
+Do not introduce Firebase or Supabase merely to make the first version appear more advanced.
+
+Keep the initial application offline-first and local-first.
+
+No production credentials, private keys, signing keystores or secrets may be committed.
+
+Preserve the special Android Studio / AI Studio signing configuration comments and required configuration blocks in app/build.gradle.kts.
+
+Use real business logic.
+
+All primary controls must perform the actions they advertise.
+
+No fake users, fake statistics, fake purchases, mock social rooms or fabricated usage information.
+
+==================================================
+2. PHASE A — BUILD AND PROJECT FOUNDATION
+
+Inspect and improve the Gradle setup.
+
+Existing important configuration:
+
+- Android Gradle Plugin 9.1.1.
+- Gradle 9.3.1.
+- Kotlin Gradle Plugin 2.2.10.
+- Compile SDK 36.
+- Target SDK 36.
+- Minimum SDK 26.
+- Room 2.7.0.
+- Existing Jetpack Compose architecture.
+
+Research current official Android compatibility documentation before changing dependency versions.
+
+Do not blindly upgrade AGP, Kotlin, KSP, Gradle or AndroidX libraries.
+
+2.1 Gradle Wrapper
+
+The inspected repository does not contain the standard root Gradle wrapper scripts and wrapper JAR.
+
+Generate a valid Gradle wrapper using the actual Gradle wrapper task when the required Gradle installation is available.
+
+Required files:
+
+- gradlew
+- gradlew.bat
+- gradle/wrapper/gradle-wrapper.jar
+- gradle/wrapper/gradle-wrapper.properties
+
+Use Gradle 9.3.1 if compatibility remains confirmed.
+
+Never fabricate a binary wrapper JAR or commit an empty placeholder.
+
+If your environment cannot execute the wrapper task, document that exact limitation for the later OpenCode engineering phase.
+
+2.2 Namespace and Package Identity
+
+Currently:
+
+- namespace: com.example
+- applicationId: com.azanahmed.focusforest
+
+Refactor the Kotlin namespace and application package consistently to:
+
+com.azanahmed.focusforest
+
+Move all affected source files and update imports, manifest references, test packages, resources and configuration.
+
+Preserve the established application ID.
+
+Verify that all activities, application classes, workers, FileProvider authorities and navigation-related references still work.
+
+Do not leave unrelated com.example packages in the production application source.
+
+2.3 Dependency Management
+
+Review the Compose BOM.
+
+The current version is dated 2024.09.00.
+
+Research the current stable BOM and upgrade to 2026.09.00 if the dependency compatibility review confirms it is suitable.
+
+Review:
+
+- Kotlin compiler compatibility.
+- Compose runtime and Material 3.
+- Lifecycle Compose.
+- Navigation Compose.
+- Room and KSP.
+- WorkManager.
+- Coroutines.
+- AndroidX test dependencies.
+
+Update the version catalog centrally.
+
+Avoid unnecessary packages.
+
+Align Java and Kotlin JVM targets deliberately with the chosen Android toolchain, preferably JDK 17 for this build.
+
+2.4 Repository Documentation
+
+Create:
+
+README.md
+
+Include:
+
+- Product overview.
+- Feature overview.
+- Technical stack.
+- Architecture.
+- Project package structure.
+- Minimum Android version.
+- SDK configuration.
+- Build instructions.
+- Test instructions.
+- Usage Access explanation.
+- Local data storage explanation.
+- Privacy behaviour.
+- Known limitations.
+- Future roadmap.
+
+Create:
+
+docs/ARCHITECTURE.md
+docs/PRIVACY_AND_DATA_FLOW.md
+docs/FEATURE_STATUS.md
+docs/TESTING.md
+
+Never mark a feature complete unless the relevant implementation exists.
+
+2.5 GitHub Actions
+
+Add:
+
+.github/workflows/android-ci.yml
+
+Use a supported Ubuntu runner and JDK 17.
+
+The workflow should:
+
+- Check out the source.
+- Configure Java.
+- Configure Gradle caching.
+- Run unit tests.
+- Run Android lint.
+- Assemble the debug APK.
+
+Use the Gradle wrapper once it is available.
+
+Do not require signing credentials for CI debug builds.
+
+Do not place secrets in the workflow.
+
+==================================================
+3. PHASE B — USAGE TRACKING CORRECTNESS
+
+This is one of the most important product features.
+
+The purpose of Focus Forest is to provide trustworthy digital wellness information.
+
+We must not display misleading usage data.
+
+Inspect:
+
+- AndroidUsageStatsGateway.
+- UsageStatsGateway.
+- UsageRepository.
+- UsageAnalyticsEngine.
+- Usage-related Room entities and DAOs.
+- InsightsViewModel.
+- TodayViewModel.
+
+3.1 Introduce Typed Usage Results
+
+The current code can treat an empty result as unavailable and can lose the distinction between a valid zero-usage day and missing data.
+
+Create a clear domain-level result model distinguishing:
+
+- PermissionDenied.
+- TrackingDisabled.
+- Successful query with non-empty results.
+- Successful query with genuinely zero usage.
+- Unavailable data.
+- Query failure.
+
+Do not convert every error into an empty successful result.
+
+Do not fabricate zero values when the system cannot supply data.
+
+3.2 Correct Usage Aggregation
+
+Keep duration calculations in milliseconds as long as possible.
+
+Do not discard a package merely because its duration is less than one whole minute.
+
+Aggregate exact durations first, then convert to display minutes.
+
+Correctly handle:
+
+- Local calendar date.
+- Start of day in the configured timezone.
+- End of day in the configured timezone.
+- Daylight-saving changes.
+- Midnight boundaries.
+- Device timezone changes.
+- Historical dates.
+- Query exceptions.
+- Empty successful queries.
+
+Persist accurate information and distinguish incomplete, complete and unavailable snapshots.
+
+3.3 Eliminate Misleading Daily Comparisons
+
+The current usage-reduction mechanism can compare a partial current day against full previous days.
+
+Correct this.
+
+For example, a user opening the app at 9 AM must not receive a 70% reduction claim simply because only nine hours of today's usage have elapsed.
+
+Implement:
+
+- Today's usage so far.
+- A clearly labelled daily usage budget.
+- Selected-app usage.
+- Weekly historical comparisons.
+- Valid comparison windows.
+- Honest baseline states.
+
+Only display percentage improvements when the measurements are genuinely comparable.
+
+Do not award percentage-reduction challenges based on an incomplete day's statistics compared with full previous days.
+
+For a reliable first release, use completed historical daily measurements or an explicitly defined elapsed-time comparison method.
+
+Weekly challenges must compare actual weekly totals against an appropriate weekly target or baseline.
+
+Do not use today's single partial total as a substitute for a weekly measurement.
+
+3.4 Refresh Efficiency
+
+Usage data is currently refreshed from multiple ViewModels and lifecycle callbacks.
+
+Prevent redundant concurrent refreshes.
+
+Implement a suitable refresh coordinator using:
+
+- Mutex or another concurrency-safe mechanism.
+- In-flight request coalescing.
+- A reasonable refresh cache.
+- Lifecycle-aware updates.
+- Explicit force-refresh behaviour.
+
+Do not perform multiple identical eight-day API queries simultaneously.
+
+Do not block the main thread.
+
+3.5 App Discovery and Selection
+
+Keep least-privilege application discovery.
+
+Do not request QUERY_ALL_PACKAGES.
+
+Do not add broad permissions unnecessarily.
+
+Allow the user to select applications for personal monitoring.
+
+Display application labels and icons safely.
+
+Handle applications that become uninstalled or unavailable.
+
+Do not include Focus Forest itself in distraction totals.
+
+3.6 Usage Data Privacy
+
+Update the disclosure so users understand that:
+
+- Android Usage Access provides application usage statistics.
+- Launchable application information is used to display the app-selection interface.
+- Usage information remains local.
+- The user can select monitored applications.
+- Usage monitoring is optional.
+- Denying permission does not prevent focus sessions or other features.
+- Users can disable monitoring and delete stored usage information.
+
+Do not add advertising SDKs or analytics SDKs.
+
+Do not upload app usage information.
+
+==================================================
+4. PHASE C — PRIVACY AND BACKUP
+
+Inspect the Android manifest and:
+
+- backup_rules.xml
+- data_extraction_rules.xml
+
+The privacy screen claims local-only data storage, but the current manifest allows backup and the rule files do not contain meaningful exclusions.
+
+Make the backup policy consistent with the privacy promise.
+
+Prefer disabling cloud backup of sensitive local usage history.
+
+Define explicit rules for cloud backup and device transfer where the Android version supports them.
+
+Inspect Android's current backup behaviour, including manufacturer-specific device-to-device backup considerations.
+
+If you choose to allow any system backup, explain exactly what is backed up and disclose it accurately.
+
+Update the privacy screen so its claims match the actual Android configuration.
+
+The app should provide:
+
+- Permission status.
+- Usage tracking controls.
+- Local data deletion.
+- Focus history export.
+- Usage-data deletion.
+- All application data deletion.
+
+All-data deletion must also cancel pending background work, timers and relevant notifications so deleted information does not reappear through stale scheduled tasks.
+
+Test the complete deletion workflow.
+
+==================================================
+5. PHASE D — TIMER ENGINE AND SESSION INTEGRITY
+
+Inspect:
+
+- FocusTimerEngine.
+- FocusViewModel.
+- FocusRepository.
+- ActiveTimerState.
+- UserPreferencesDataStore.
+- SessionCompletionWorker.
+
+Preserve and improve the existing monotonic elapsed-time architecture.
+
+The timer must survive:
+
+- Activity recreation.
+- Application backgrounding.
+- Process death.
+- Device restart.
+- Pause and resume.
+- Stale scheduled work.
+- Timezone changes.
+
+5.1 Authoritative Timer
+
+Use elapsed realtime and boot identity as the main same-boot timing authority.
+
+Do not trust a UI ticker as the authoritative timer.
+
+A UI update interval around one second is sufficient for a countdown.
+
+Avoid unnecessary 250-millisecond continuous updates.
+
+5.2 Worker Completion
+
+The current completion worker primarily sends a notification after a delay.
+
+Improve it.
+
+The worker must:
+
+1. Receive the exact session ID.
+2. Retrieve the persisted active timer.
+3. Verify that it refers to the same session.
+4. Verify that the state is still RUNNING.
+5. Evaluate timer expiry using the timer recovery logic.
+6. Reject stale, aborted, paused or interrupted sessions.
+7. Finalize the correct session through FocusRepository.
+8. Award rewards through the transactional repository.
+9. Send a completion notification only after successful finalization.
+10. Use idempotency protections so ViewModel and WorkManager can safely race.
+
+An old worker must never complete a newer focus session.
+
+5.3 ViewModel Reliability
+
+Handle completion exceptions.
+
+Use try/finally around in-flight completion locks.
+
+Expose sensible error and retry states.
+
+Do not silently lose a completed session because a database operation temporarily failed.
+
+5.4 Break Reward Exploit
+
+Correct the reward economy.
+
+Currently break sessions can award XP and seeds, and every completed session may plant a tree.
+
+Change the business rules:
+
+- Short breaks: zero direct XP and zero seeds.
+- Long breaks: zero direct XP and zero seeds.
+- Break sessions must not plant productivity trees.
+- A completed planned break can still fulfil an appropriate planned-break challenge.
+- Do not allow repeated break sessions to farm rewards.
+- Focus work sessions can award legitimate XP, seeds and trees.
+- Challenge rewards must remain separate and idempotent.
+
+Test all cases.
+
+==================================================
+6. PHASE E — TRANSACTIONAL REWARD AND CHALLENGE ENGINE
+
+This phase addresses the most important reward-integrity bug.
+
+Inspect:
+
+- ChallengeEngine.
+- ChallengeRepository.
+- FocusRepository.
+- XpLevelEngine.
+- AchievementEngine.
+- ShopAndForestRepository.
+- Challenge entities and DAOs.
+- Daily statistics and forest persistence.
+
+6.1 Single Reward Authority
+
+Challenge completion and reward crediting must be handled by one reliable transactional authority.
+
+No repository may mark a reward as claimed without actually applying the reward.
+
+Every earned challenge reward must be credited exactly once.
+
+Consider adding a RewardLedgerEntity with an immutable unique reward key.
+
+Potential reward sources:
+
+- Focus session.
+- Daily challenge.
+- Weekly challenge.
+- Custom challenge.
+- Achievement.
+- Streak milestone.
+
+Use unique idempotency keys.
+
+6.2 Atomic Transaction
+
+A challenge completion transaction should update:
+
+- Challenge progress.
+- Challenge completion status.
+- Reward-claimed status.
+- Reward ledger.
+- User lifetime XP.
+- User level.
+- Spendable forest points.
+- Total seeds.
+- Daily statistics.
+- Forest totals.
+
+All must succeed together or roll back together.
+
+Never permit a challenge to become permanently claimed while the user receives nothing.
+
+6.3 Challenge Generation
+
+Preserve deterministic daily challenge generation.
+
+Preserve weekly challenge generation.
+
+Do not regenerate active challenges on every application restart.
+
+Avoid duplicate challenge IDs.
+
+Ensure that changes in baseline availability cannot silently reset a user's existing challenge progress.
+
+Add explicit expiry behaviour.
+
+6.4 Challenge Builder
+
+The application already supports creating custom personal challenges.
+
+Improve it by adding:
+
+- Input validation.
+- Meaningful target limits.
+- Clear progress.
+- Completion history.
+- Delete/archive action with confirmation.
+- Edit capability only when modification cannot invalidate previously earned rewards.
+
+Prevent users from deleting/recreating completed challenges to farm rewards.
+
+6.5 Challenge Types
+
+Support:
+
+- Focus minutes.
+- Completed sessions.
+- Pomodoro sessions.
+- Deep-work sessions.
+- Planned breaks.
+- Daily app usage budget.
+- Valid completed-day usage reduction.
+- Weekly focus goal.
+
+All challenge progress must be derived from genuine stored records.
+
+==================================================
+7. PHASE F — RESTORE MISSING PRODUCT FEATURES
+
+Once correctness and persistence are secure, complete the missing local-first product features.
+
+Do not add server-dependent features in this phase.
+
+7.1 Pomodoro Chain Mode
+
+This was an important feature in the original Focus Forest v1.2 project.
+
+Implement a proper Pomodoro Chain system.
+
+Allow users to configure:
+
+- 1 to 8 focus sessions.
+- Focus session duration.
+- Short break duration.
+- Long break duration.
+- Long break frequency.
+- Automatic transition preference.
+
+Create a dedicated Chain Mode experience.
+
+Display:
+
+- Current cycle.
+- Remaining time.
+- Completed rounds.
+- Upcoming break.
+- Overall progress.
+- Total focus minutes.
+- Total breaks.
+- Final reward.
+
+Requirements:
+
+- Pause and resume.
+- Abort confirmation.
+- Application background recovery.
+- Process-death recovery.
+- Device restart recovery.
+- Correct session history.
+- Correct challenge progress.
+- No duplicate rewards.
+- No reward for aborted sessions.
+
+Do not implement it as a UI-only sequence of timers.
+
+Use the existing timer engine and repository architecture, extending them only where appropriate.
+
+7.2 Streak Calendar
+
+Implement a calendar heatmap.
+
+Show:
+
+- Focus-active days.
+- Goal-completed days.
+- Rest days.
+- Missed days.
+- Future dates.
+
+Allow tapping a date to inspect that day's statistics and sessions.
+
+Use an accessible colour scale and text descriptions.
+
+Do not create false activity records.
+
+Use recovery-friendly streak rules.
+
+7.3 Advanced Analytics
+
+Improve Insights.
+
+Add:
+
+- Seven-day focus trends.
+- Thirty-day focus trends.
+- Ninety-day trends where sufficient data exists.
+- Monthly consistency.
+- Best focus day.
+- Longest session.
+- Best time-of-day for focus.
+- Session-type distribution.
+- Goal-completion rate.
+- Historical records.
+
+Time-of-day insights should derive from genuine focus-session timestamps.
+
+Do not invent hourly app-usage measurements from daily aggregate statistics.
+
+Distinguish actual measured data, incomplete data and unavailable data.
+
+7.4 Ambient Sounds
+
+Restore the original ambient audio concept only where legally usable audio assets can be supplied.
+
+Potential categories:
+
+- Rain.
+- Nature.
+- Forest.
+- Ocean.
+- Fireplace.
+- White noise.
+- Lo-fi, only where rights permit.
+
+Implement local playback, session integration, play/pause, volume and lifecycle handling.
+
+Do not download copyrighted music.
+
+Do not use unlicensed assets.
+
+Include an asset licensing register.
+
+If suitable assets are unavailable, implement the audio architecture and document that content assets remain outstanding.
+
+7.5 Forest Experience
+
+Improve the forest from a basic statistics destination into an engaging long-term experience.
+
+Include:
+
+- Personal forest.
+- Tree collection.
+- Tree species.
+- Forest level.
+- Growth progression.
+- Unlockable environments.
+- Decorations.
+- Equipped cosmetics.
+- Meaningful planting celebrations.
+- Historical forest timeline.
+
+Ensure tree count, seed totals and forest level are derived from consistent data.
+
+Avoid rendering a new tree for every break or duplicate session.
+
+7.6 Shop
+
+Improve the existing shop.
+
+Users should be able to:
+
+- Browse themes.
+- Browse avatars.
+- Browse forest environments.
+- Browse decorations.
+- Purchase using legitimate earned currency.
+- Equip owned content.
+- View owned items.
+- See clear item prices.
+- Receive an insufficient-points message.
+
+All purchases must be atomic Room transactions.
+
+Do not include real-money transactions in this phase.
+
+==================================================
+8. PHASE G — NOTIFICATION CORRECTNESS
+
+Audit FocusWorkers and NotificationHelper.
+
+Implement or remove incomplete notification controls.
+
+If weekly-summary notifications are available in Settings, implement genuine weekly summary scheduling and delivery.
+
+Otherwise, do not expose an option that promises functionality that does not exist.
+
+Respect:
+
+- Global notification setting.
+- Per-notification settings.
+- Android 13+ permission.
+- Quiet hours.
+- Timezone.
+- User-selected reminder time.
+- Data deletion.
+- Session cancellation.
+
+No aggressive notification scheduling.
+
+No guilt-based messaging.
+
+==================================================
+9. PHASE H — UI AND EXPERIENCE QUALITY
+
+Keep the established Focus Forest identity.
+
+Do not replace the visual language with a generic dashboard template.
+
+Review every destination:
+
+- Onboarding.
+- Today.
+- Focus.
+- Challenges.
+- Insights.
+- Forest.
+- Shop.
+- Settings.
+- Privacy.
+
+Improve:
+
+- Visual hierarchy.
+- Typography.
+- Spacing.
+- Component consistency.
+- Empty states.
+- Error states.
+- Permission states.
+- Loading states.
+- Accessible touch targets.
+- Screen reader descriptions.
+- Dark mode.
+- Font scaling.
+- Responsive layouts.
+
+Make charts understandable and accurate.
+
+Add loading, empty, success and error states.
+
+Avoid hardcoded fake usage or progress.
+
+Do not sacrifice business logic to make the preview attractive.
+
+All primary actions must be functional.
+
+==================================================
+10. PHASE I — TESTING AND VERIFICATION
+
+Build a substantial automated test suite.
+
+Domain tests
+
+Test:
+
+- XP progression.
+- Level progression.
+- Reward calculations.
+- Break reward rules.
+- Forest growth.
+- Achievement unlocks.
+- Streak calculations.
+- Rest days.
+- Grace days.
+- Challenge generation.
+- Challenge completion.
+- Challenge reward idempotency.
+- Usage baseline validity.
+- Partial-day comparison prevention.
+- Calendar calculations.
+
+Repository and database tests
+
+Test:
+
+- Focus session completion.
+- Duplicate session completion.
+- Transaction rollback.
+- Reward ledger uniqueness.
+- Challenge completion and reward.
+- Shop purchasing.
+- Shop currency integrity.
+- Forest persistence.
+- Usage snapshot persistence.
+- Database reopening.
+- Custom challenge creation/deletion.
+- Complete local data deletion.
+
+Usage tests
+
+Use injectable fake usage gateways.
+
+Test:
+
+- Permission denied.
+- Permission granted.
+- Valid zero-usage result.
+- Non-empty usage result.
+- Unavailable result.
+- Exception result.
+- Package filtering.
+- Usage less than one minute.
+- Multiple timezones.
+- Midday partial-day snapshots.
+- Historical daily totals.
+- Baseline availability.
+- Duplicate refresh prevention.
+
+Timer tests
+
+Test:
+
+- Start.
+- Pause.
+- Resume.
+- Complete.
+- Abort.
+- Duplicate completion.
+- Process death recovery.
+- Reboot recovery.
+- Stale worker.
+- Aborted worker.
+- Paused worker.
+- Timer expiry.
+- Background and foreground.
+- Chain Mode recovery.
+
+Compose UI tests
+
+Test the major user journeys:
+
+1. First installation.
+2. Onboarding completion.
+3. Usage permission explanation.
+4. Usage permission denied.
+5. Usage permission enabled.
+6. Focus session start.
+7. Pause and resume.
+8. Focus session completion.
+9. Challenge completion.
+10. Reward unlock.
+11. Forest growth.
+12. Shop purchase.
+13. Calendar interaction.
+14. Insights navigation.
+15. Data deletion.
+
+Do not rely solely on unit tests for Android platform behaviour.
+
+If a physical device or emulator is available, verify the most important flows on it.
+
+Use appropriate test device/API coverage, ideally API 26, API 30, API 33 and API 36.
+
+Never claim physical verification when only Robolectric or mocked tests were run.
+
+==================================================
+11. FEATURES DELIBERATELY DEFERRED
+
+Do not fake these features.
+
+They need real backend engineering:
+
+- User accounts.
+- Google sign-in.
+- Cloud synchronization.
+- Friends.
+- Real-time social challenge rooms.
+- Real leaderboard.
+- Multi-device competition.
+- Server-backed profiles.
+- Secure Pro subscription entitlements.
+- Google Play Billing.
+- Purchase verification.
+- Cloud-based moderation.
+- Remote notifications.
+
+Prepare clean architecture boundaries and documentation for these later integrations.
+
+Do not introduce a Firebase or Supabase dependency unless there is a separately approved backend implementation.
+
+Our next backend phase will use a secure server architecture and will be handled separately through a more complete engineering workflow.
+
+==================================================
+12. PRODUCTION AND MONETIZATION READINESS
+
+The intended future model is:
+
+FREE:
+
+- Focus sessions.
+- Basic app usage insight.
+- Daily and weekly challenges.
+- Forest growth.
+- Basic analytics.
+- Achievements.
+- Local storage.
+
+FOCUS FOREST PLUS:
+
+- Advanced analytics.
+- Long-term historical comparisons.
+- Additional challenge routines.
+- Premium forest environments.
+- Premium ambient sound content.
+- Future cloud synchronization.
+- Future social features.
+
+Monthly and yearly subscriptions are planned.
+
+Optional permanent cosmetic purchases may be considered.
+
+No advertising in the current release.
+
+Do not implement mock billing.
+
+Do not locally grant premium access.
+
+Keep monetization isolated behind the existing EntitlementGateway boundary.
+
+Document the expected server-verified entitlement architecture.
+
+==================================================
+13. ACCEPTANCE CRITERIA
+
+This phase is complete only when:
+
+1. The application preserves its existing working architecture.
+2. Package identity is consistent.
+3. Build configuration is reproducible, or exact wrapper limitations are documented.
+4. Usage tracking distinguishes zero from unavailable.
+5. Partial-day data cannot generate misleading reduction claims.
+6. Usage refreshing cannot cause repeated concurrent API work.
+7. Privacy and backup behaviour are consistent.
+8. Timer completion is safe and idempotent.
+9. Stale WorkManager tasks cannot reward or notify the wrong session.
+10. Break sessions cannot be used to farm rewards or trees.
+11. Challenge rewards cannot be claimed without being credited.
+12. All earned rewards are transactionally safe.
+13. Custom challenges can be managed properly.
+14. Pomodoro Chain Mode works end to end.
+15. The streak calendar works.
+16. Advanced analytics show real data.
+17. Forest and shop transactions work.
+18. Weekly notification controls work or are appropriately removed.
+19. Existing and newly added tests pass.
+20. Documentation accurately reflects the application.
+
+Do not mark the entire phase complete if any critical correctness issue remains.
+
+==================================================
+14. EXECUTION AND FINAL REPORT
+
+Execute the work in this order:
+
+A. Repository inspection and setup.
+B. Build foundation.
+C. Usage-statistics correctness.
+D. Privacy and backup.
+E. Timer and rewards integrity.
+F. Challenge integrity.
+G. Pomodoro Chain Mode and calendar.
+H. Analytics and forest improvements.
+I. Notifications.
+J. UI quality.
+K. Tests and verification.
+L. Documentation.
+
+Work in controlled commits.
+
+Keep commits focused and understandable.
+
+Do not perform unrelated cosmetic refactoring.
+
+Where a feature is too large to complete safely, complete the underlying foundation and report precisely what remains.
+
+At the end, update:
+
+README.md
+
+docs/ARCHITECTURE.md
+
+docs/PRIVACY_AND_DATA_FLOW.md
+
+docs/FEATURE_STATUS.md
+
+docs/TESTING.md
+
+Create:
+
+docs/PHASE_0_1_REPORT.md
+
+The final report must contain:
+
+1. Executive summary.
+2. Starting Git commit.
+3. New branch and final commit.
+4. Files created.
+5. Files modified.
+6. Architecture changes.
+7. Usage tracking corrections.
+8. Timer corrections.
+9. Reward-integrity corrections.
+10. New features.
+11. Privacy and backup changes.
+12. Dependency changes.
+13. Unit tests executed and actual results.
+14. UI tests executed and actual results.
+15. Gradle build results.
+16. Lint results.
+17. Known defects.
+18. Physical-device verification still needed.
+19. Features deferred to OpenCode.
+20. Recommended next engineering phase.
+
+Do not report an APK as built unless the build completed.
+
+Do not claim a feature is production-ready merely because its screen exists.
+
+Do not claim Google Play approval or compliance without completing the necessary verification.
+
+FINAL OBJECTIVE:
+
+Turn the current Focus Forest repository into a reliable, accurate, enjoyable and technically maintainable digital wellness application.
+
+Preserve what already works.
+
+Fix the underlying engineering problems.
+
+Complete the missing local-first features.
+
+Prepare a trustworthy foundation for real users and future monetization.
+
+Begin by auditing the complete current repository and then execute Phase 0.1.

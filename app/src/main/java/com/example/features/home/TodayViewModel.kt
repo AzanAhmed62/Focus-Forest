@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.core.di.AppContainer
 import com.example.domain.engine.XpLevelEngine
+import com.example.domain.model.ActiveChainState
 import com.example.domain.model.ChallengeItem
 import com.example.domain.model.ChallengePeriod
 import com.example.domain.model.ChallengeStatus
@@ -34,6 +35,7 @@ data class TodayUiState(
     val highlightChallenge: ChallengeItem? = null,
     val forestState: ForestState = ForestState(),
     val usageState: UsageDashboardState = UsageDashboardState(),
+    val activeChain: ActiveChainState? = null,
     val levelProgressFraction: Float = 0f,
     val isFirstTimeEmpty: Boolean = false
 )
@@ -52,7 +54,8 @@ class TodayViewModel(
         container.challengeRepository.challenges,
         container.shopAndForestRepository.forestState,
         container.usageRepository.dashboardState,
-        container.preferencesDataStore.dailyGoalMinutes
+        container.preferencesDataStore.dailyGoalMinutes,
+        container.focusRepository.activeChainState
     ) { values ->
         val profile = values[0] as UserProfile?
         @Suppress("UNCHECKED_CAST")
@@ -63,6 +66,7 @@ class TodayViewModel(
         val forest = values[4] as ForestState
         val usage = values[5] as UsageDashboardState
         val goalMinutes = values[6] as Int
+        val activeChain = values[7] as ActiveChainState?
 
         val todayDate = container.clockProvider.todayLocalDate()
         val todayStr = todayDate.toString()
@@ -99,6 +103,7 @@ class TodayViewModel(
             highlightChallenge = highlight,
             forestState = forest,
             usageState = usage,
+            activeChain = activeChain,
             levelProgressFraction = levelInfo.progressFraction,
             isFirstTimeEmpty = records.totalCompletedSessions == 0 && todayStats.focusMinutes == 0
         )

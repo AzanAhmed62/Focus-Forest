@@ -13,6 +13,7 @@ import com.example.data.local.db.entities.ChallengeProgressEntity
 import com.example.data.local.db.entities.ForestProgressEntity
 import com.example.data.local.db.entities.ForestTreeEntity
 import com.example.data.local.db.entities.OwnedItemEntity
+import com.example.data.local.db.entities.RewardLedgerEntity
 import com.example.data.local.db.entities.ShopItemEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -72,11 +73,17 @@ interface ChallengeDao {
     @Query("SELECT * FROM challenges WHERE periodKey = :periodKey")
     suspend fun getChallengesForPeriod(periodKey: String): List<ChallengeEntity>
 
+    @Query("SELECT * FROM challenges WHERE id = :id")
+    suspend fun getChallengeById(id: String): ChallengeEntity?
+
     @Query("SELECT * FROM challenges ORDER BY createdAtMs ASC")
     suspend fun getAllChallengesOnce(): List<ChallengeEntity>
 
     @Query("SELECT * FROM challenge_progress")
     suspend fun getAllProgressOnce(): List<ChallengeProgressEntity>
+
+    @Query("SELECT * FROM challenge_progress WHERE challengeId = :id")
+    suspend fun getProgressById(id: String): ChallengeProgressEntity?
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertChallengesIfAbsent(challenges: List<ChallengeEntity>)
@@ -92,6 +99,15 @@ interface ChallengeDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertProgressList(progress: List<ChallengeProgressEntity>)
+
+    @Query("UPDATE challenges SET isArchived = 1 WHERE id = :id")
+    suspend fun archiveChallenge(id: String)
+
+    @Query("DELETE FROM challenge_progress WHERE challengeId = :id")
+    suspend fun deleteProgressById(id: String)
+
+    @Query("DELETE FROM challenges WHERE id = :id")
+    suspend fun deleteChallengeById(id: String)
 
     @Query("DELETE FROM challenge_progress")
     suspend fun clearProgress()
@@ -133,7 +149,7 @@ interface ForestDao {
     suspend fun getTreesOnce(): List<ForestTreeEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertTreeIfAbsent(tree: ForestTreeEntity)
+    suspend fun insertTreeIfAbsent(tree: ForestTreeEntity): Long
 
     @Query("DELETE FROM forest_trees")
     suspend fun clearTrees()
@@ -167,4 +183,27 @@ interface ShopDao {
 
     @Query("DELETE FROM owned_items")
     suspend fun clearOwned()
+}
+
+@Dao
+interface RewardLedgerDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(entry: RewardLedgerEntity): Long
+
+    @Query("SELECT * FROM reward_ledger ORDER BY createdAtMs DESC")
+    fun observeAll(): Flow<List<RewardLedgerEntity>>
+
+    @Query("SELECT * FROM reward_ledger ORDER BY createdAtMs DESC")
+    suspend fun getAllOnce(): List<RewardLedgerEntity>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM reward_ledger WHERE rewardKey = :rewardKey)")
+    suspend fun exists(rewardKey: String): Boolean
+
+    @Query(
+        "SELECT COUNT(*) FROM reward_ledger WHERE sourceType = :sourceType AND createdAtMs >= :sinceWallMs AND (xpDelta > 0 OR seedsDelta > 0)"
+    )
+    suspend fun countBySourceSince(sourceType: String, sinceWallMs: Long): Int
+
+    @Query("DELETE FROM reward_ledger")
+    suspend fun clear()
 }

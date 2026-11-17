@@ -4,10 +4,7 @@ import androidx.room.withTransaction
 import com.example.core.time.ClockProvider
 import com.example.data.local.datastore.UserPreferencesDataStore
 import com.example.data.local.db.FocusForestDatabase
-import com.example.data.local.db.entities.AchievementEntity
-import com.example.data.local.db.entities.ChallengeProgressEntity
 import com.example.data.local.db.entities.DailyStatsEntity
-import com.example.data.local.db.entities.FocusSessionEntity
 import com.example.data.local.db.entities.ForestProgressEntity
 import com.example.data.local.db.entities.ForestTreeEntity
 import com.example.data.local.db.entities.UserProfileEntity
@@ -19,6 +16,7 @@ import com.example.domain.engine.StreakCalculator
 import com.example.domain.engine.XpLevelEngine
 import com.example.domain.model.AchievementItem
 import com.example.domain.model.AchievementType
+import com.example.domain.model.ActiveChainState
 import com.example.domain.model.ActiveTimerState
 import com.example.domain.model.AvatarStyle
 import com.example.domain.model.ChallengeItem
@@ -52,7 +50,8 @@ data class SessionCompletionOutcome(
 class FocusRepository(
     private val db: FocusForestDatabase,
     private val prefs: UserPreferencesDataStore,
-    private val clockProvider: ClockProvider
+    private val clockProvider: ClockProvider,
+    private val rewardAuthority: RewardAuthority = RewardAuthority(db, clockProvider)
 ) {
     private val userProfileDao = db.userProfileDao()
     private val focusSessionDao = db.focusSessionDao()
@@ -74,6 +73,7 @@ class FocusRepository(
     }
 
     val activeTimerState: Flow<ActiveTimerState?> = prefs.activeTimerState
+    val activeChainState: Flow<ActiveChainState?> = prefs.activeChainState
 
     val personalRecords: Flow<PersonalRecords> = combine(
         allSessions,
@@ -199,6 +199,60 @@ class FocusRepository(
         prefs.saveActiveTimerState(state)
     }
 
+    suspend fun saveActiveChainState(state: ActiveChainState?) {
+        prefs.saveActiveChainState(state)
+    }
+
+    suspend fun advanceChainForCompletedSession(
+        chainId: String?,
+        session: FocusSession
+    ): ActiveChainState? {
+        if (chainId == null) return null
+        val chain = prefs.activeChainState.first() ?: return null
+        if (chain.chainId != chainId || chain.isCompleted) return chain
+
+        val updated = if (!session.sessionType.isBreak) {
+            val newFocusCount = chain.completedFocusCount + 1
+            val newFocusedMin = chain.totalFocusedMinutes + session.completedMinutes
+            val newXp = chain.totalEarnedXp + session.xpAwarded
+            val newSeeds = chain.totalEarnedSeeds + session.seedsAwarded
+            if (newFocusCount >= chain.config.totalFocusSessions) {
+                chain.copy(
+                    completedFocusCount = newFocusCount,
+                    totalFocusedMinutes = newFocusedMin,
+                    totalEarnedXp = newXp,
+                    totalEarnedSeeds = newSeeds,
+                    waitingForUserNextStep = false,
+                    isCompleted = true
+                )
+            } else {
+                val nextBreak = if (newFocusCount % chain.config.longBreakFrequency == 0) {
+                    SessionType.LONG_BREAK
+                } else {
+                    SessionType.SHORT_BREAK
+                }
+                chain.copy(
+                    completedFocusCount = newFocusCount,
+                    totalFocusedMinutes = newFocusedMin,
+                    totalEarnedXp = newXp,
+                    totalEarnedSeeds = newSeeds,
+                    currentStepType = nextBreak,
+                    waitingForUserNextStep = !chain.config.autoTransition,
+                    isCompleted = false
+                )
+            }
+        } else {
+            chain.copy(
+                completedBreakCount = chain.completedBreakCount + 1,
+                currentStepType = SessionType.POMODORO,
+                waitingForUserNextStep = !chain.config.autoTransition,
+                isCompleted = false
+            )
+        }
+        prefs.saveActiveChainState(updated)
+        return updated
+    }
+
     suspend fun markRestDay(date: LocalDate = clockProvider.todayLocalDate()) {
         val goal = prefs.dailyGoalMinutes.first()
         db.withTransaction {
@@ -249,7 +303,10 @@ class FocusRepository(
         val dailyGoal = prefs.dailyGoalMinutes.first()
 
         val outcome = db.withTransaction {
-            val rewardedIds = focusSessionDao.getRewardedSessionIds().toSet()
+            val existingById = focusSessionDao.getSessionById(activeState.sessionId)
+            val alreadyCompleted = existingById?.status == SessionStatus.COMPLETED.name
+            val rewardedIds = focusSessionDao.getRewardedSessionIds().toSet() +
+                if (alreadyCompleted) setOf(activeState.sessionId) else emptySet()
             val completedSession = FocusTimerEngine.buildCompletedSession(
                 state = activeState,
                 nowWallClockMs = nowMs,
@@ -257,9 +314,20 @@ class FocusRepository(
                 alreadyRewardedSessionIds = rewardedIds
             )
 
-            // Idempotency guard: if already rewarded, return existing without adding XP/seeds again
-            if (!completedSession.rewardGranted) {
-                val existing = focusSessionDao.getSessionById(completedSession.id)?.toDomain() ?: completedSession
+            // Ledger + completion dual idempotency guard (also prevents double-evaluating break challenges)
+            val sessionClaimed = if (!alreadyCompleted) {
+                rewardAuthority.tryClaimSessionLedger(
+                    sessionId = completedSession.id,
+                    xpDelta = completedSession.xpAwarded,
+                    seedsDelta = completedSession.seedsAwarded,
+                    nowMs = nowMs
+                )
+            } else {
+                false
+            }
+
+            if (alreadyCompleted || !sessionClaimed) {
+                val existing = existingById?.toDomain() ?: completedSession
                 val profile = userProfileDao.getProfileOnce()
                 return@withTransaction SessionCompletionOutcome(
                     session = existing,
@@ -275,36 +343,30 @@ class FocusRepository(
             // 1. Persist completed session
             focusSessionDao.upsertSession(completedSession.toEntity())
 
-            // 2. Update daily stats
+            // 2. Update daily stats (breaks do not increment focus minutes or session counts)
             val isFocusWork = !completedSession.sessionType.isBreak
             val prevDaily = dailyStatsDao.getDailyStatsForDateOnce(todayStr)
             val newFocusMin = (prevDaily?.focusMinutes ?: 0) + if (isFocusWork) completedSession.completedMinutes else 0
             val newSessionCount = (prevDaily?.completedSessions ?: 0) + if (isFocusWork) 1 else 0
             val goalMet = newFocusMin >= dailyGoal
 
-            // 3. Plant tree & update forest progress
-            val tree = ForestTreeEntity(
-                id = completedSession.id,
-                species = completedSession.sessionType.treeSpecies.name,
-                plantedDate = todayStr,
-                focusMinutes = completedSession.completedMinutes,
-                plantedAtWallMs = nowMs
-            )
-            forestDao.insertTreeIfAbsent(tree)
+            // 3. Plant tree ONLY for completed focus work sessions (never breaks)
+            if (isFocusWork) {
+                val tree = ForestTreeEntity(
+                    id = completedSession.id,
+                    species = completedSession.sessionType.treeSpecies.name,
+                    plantedDate = todayStr,
+                    focusMinutes = completedSession.completedMinutes,
+                    plantedAtWallMs = nowMs
+                )
+                forestDao.insertTreeIfAbsent(tree)
+            }
 
-            val prevForest = forestDao.getForestProgressOnce() ?: ForestProgressEntity(
-                id = 1,
-                totalSeeds = 0,
-                spendableLeafPoints = 0,
-                forestLevel = 1,
-                totalTreesPlanted = 0,
-                equippedEnvironmentId = "env_emerald_clearing",
-                equippedDecorationsCsv = ""
-            )
+            val prevForest = forestDao.getForestProgressOnce() ?: rewardAuthority.defaultForest()
             var totalSeedsDelta = completedSession.seedsAwarded
             var totalXpDelta = completedSession.xpAwarded
 
-            // 4. Recalculate streaks
+            // 4. Recalculate streaks & claim milestone via ledger
             val allStats = dailyStatsDao.getAllDailyStatsOnce()
                 .associateBy { it.localDate }
                 .toMutableMap()
@@ -328,35 +390,21 @@ class FocusRepository(
                 .toSet()
             val streakResult = StreakCalculator.calculateStreaks(activeDates, restDates, today)
 
-            val prevProfile = userProfileDao.getProfileOnce() ?: UserProfileEntity(
-                id = 1,
-                displayName = "",
-                primaryIntention = UserIntention.CONCENTRATION.name,
-                dailyFocusGoalMinutes = dailyGoal,
-                lifetimeXp = 0,
-                currentLevel = 1,
-                currentStreakDays = 0,
-                longestStreakDays = 0,
-                equippedAvatarId = AvatarStyle.SEEDLING.id,
-                equippedThemeId = ForestThemeSkin.CLASSIC_SAGE.id,
-                createdAtMs = nowMs
-            )
-            val streakBonus = if (streakResult.currentStreakDays > prevProfile.currentStreakDays) {
-                XpLevelEngine.streakMilestoneBonusXp(streakResult.currentStreakDays)
+            val prevProfile = userProfileDao.getProfileOnce() ?: rewardAuthority.defaultProfile(dailyGoal, nowMs)
+            val streakBonus = if (isFocusWork && streakResult.currentStreakDays > prevProfile.currentStreakDays) {
+                rewardAuthority.tryClaimStreakMilestone(streakResult.currentStreakDays, nowMs)
             } else {
                 0
             }
             totalXpDelta += streakBonus
 
-            // 5. Evaluate challenges in transaction
-            val allChallengeEntities = challengeDao.getAllChallengesOnce()
+            // 5. Evaluate and atomically credit challenges via ledger
+            val allChallengeEntities = challengeDao.getAllChallengesOnce().filter { !it.isArchived }
             val progressMap = challengeDao.getAllProgressOnce().associateBy { it.challengeId }
             val domainChallenges = allChallengeEntities.map { c ->
-                val p = progressMap[c.id]
-                c.toDomain(p)
+                c.toDomain(progressMap[c.id])
             }
             val allCompletedSessions = focusSessionDao.getAllSessionsOnce().map { it.toDomain() }
-            val currentWeekKey = ChallengeEngine.weekKeyFor(today)
             val sessionsByChallenge = domainChallenges.associate { ch ->
                 val filtered = when (ch.period) {
                     ChallengePeriod.DAILY -> allCompletedSessions.filter { it.localDate == ch.periodKey }
@@ -368,50 +416,43 @@ class FocusRepository(
                 }
                 ch.id to filtered
             }
-            val (evaluatedChallenges, newlyCompletedChallenges) = ChallengeEngine.evaluateChallenges(
+            val evalOutput = ChallengeEngine.evaluate(
                 challenges = domainChallenges,
                 sessionsInPeriodByChallengeId = sessionsByChallenge,
                 usageBaseline = usageBaseline,
+                todayDate = today,
                 nowWallClockMs = nowMs
             )
-            challengeDao.upsertProgressList(
-                evaluatedChallenges.map {
-                    ChallengeProgressEntity(
-                        challengeId = it.id,
-                        currentProgress = it.currentProgress,
-                        status = it.status.name,
-                        completedAtMs = it.completedAtMs,
-                        rewardClaimed = it.rewardClaimed
+            val challengeCredit = rewardAuthority.creditChallengeEvaluationInTransaction(evalOutput, nowMs)
+            totalXpDelta += challengeCredit.xpAdded
+            totalSeedsDelta += challengeCredit.seedsAdded
+
+            // 6. Persist updated daily stats with total deltas (skip creating empty row on zero-reward breaks)
+            if (isFocusWork || prevDaily != null || totalXpDelta > 0 || totalSeedsDelta > 0) {
+                dailyStatsDao.upsertDailyStats(
+                    updatedTodayStats.copy(
+                        xpEarned = (prevDaily?.xpEarned ?: 0) + totalXpDelta,
+                        seedsEarned = (prevDaily?.seedsEarned ?: 0) + totalSeedsDelta
                     )
-                }
-            )
-            newlyCompletedChallenges.forEach {
-                totalXpDelta += it.rewardXp
-                totalSeedsDelta += it.rewardSeeds
+                )
             }
 
-            // 6. Save updated daily stats with challenge/streak bonus XP/seeds
-            dailyStatsDao.upsertDailyStats(
-                updatedTodayStats.copy(
-                    xpEarned = (prevDaily?.xpEarned ?: 0) + totalXpDelta,
-                    seedsEarned = (prevDaily?.seedsEarned ?: 0) + totalSeedsDelta
-                )
-            )
-
             // 7. Update Forest totals
-            val newTotalSeeds = prevForest.totalSeeds + totalSeedsDelta
-            val newSpendableLeafPoints = prevForest.spendableLeafPoints + totalSeedsDelta
-            val newTreesCount = forestDao.getTreesOnce().size
-            forestDao.upsertForestProgress(
-                prevForest.copy(
-                    totalSeeds = newTotalSeeds,
-                    spendableLeafPoints = newSpendableLeafPoints,
-                    forestLevel = ForestGrowthEngine.forestLevelForSeeds(newTotalSeeds),
-                    totalTreesPlanted = newTreesCount
+            if (isFocusWork || totalSeedsDelta > 0) {
+                val newTotalSeeds = prevForest.totalSeeds + totalSeedsDelta
+                val newSpendableLeafPoints = prevForest.spendableLeafPoints + totalSeedsDelta
+                val newTreesCount = forestDao.getTreesOnce().size
+                forestDao.upsertForestProgress(
+                    prevForest.copy(
+                        totalSeeds = newTotalSeeds,
+                        spendableLeafPoints = newSpendableLeafPoints,
+                        forestLevel = ForestGrowthEngine.forestLevelForSeeds(newTotalSeeds),
+                        totalTreesPlanted = newTreesCount
+                    )
                 )
-            )
+            }
 
-            // 8. Evaluate Achievements
+            // 8. Evaluate & atomically credit Achievements
             val totalFocusMinutesAll = allCompletedSessions
                 .filter { it.status == SessionStatus.COMPLETED && !it.sessionType.isBreak }
                 .sumOf { it.completedMinutes }
@@ -420,42 +461,40 @@ class FocusRepository(
             val longestSessionMin = allCompletedSessions
                 .filter { it.status == SessionStatus.COMPLETED && !it.sessionType.isBreak }
                 .maxOfOrNull { it.completedMinutes } ?: 0
-            val completedChallengesTotal = evaluatedChallenges.count { it.status == ChallengeStatus.COMPLETED }
+            val completedChallengesTotal = evalOutput.evaluatedChallenges.count {
+                it.status == ChallengeStatus.COMPLETED
+            }
+            val activeGoalDays = allStats.values.count { it.completedSessions > 0 }
+            val goalMetDays = allStats.values.count { it.goalMet }
+            val goalCompletionRate = if (activeGoalDays > 0) ((goalMetDays * 100f) / activeGoalDays).toInt() else 0
 
             val provisionalXp = prevProfile.lifetimeXp + totalXpDelta
             val provisionalLevel = XpLevelEngine.levelForXp(provisionalXp)
-            val existingAchMap = achievementDao.getAchievementsOnce()
-                .mapNotNull { entity ->
-                    runCatching { AchievementType.valueOf(entity.type) }.getOrNull()?.let { type ->
-                        type to if (entity.unlocked) entity.unlockedAtMs else null
-                    }
-                }.toMap()
-
-            val (_, newlyUnlockedAchievements) = AchievementEngine.evaluate(
-                existing = existingAchMap,
-                records = PersonalRecords(
-                    totalFocusMinutes = totalFocusMinutesAll,
-                    totalCompletedSessions = totalCompletedFocusCount,
-                    longestSessionMinutes = longestSessionMin,
-                    currentStreakDays = streakResult.currentStreakDays,
-                    longestStreakDays = maxOf(streakResult.longestStreakDays, prevProfile.longestStreakDays),
-                    goalCompletionRatePercent = 0,
-                    totalActiveDays = activeDates.size
-                ),
-                completedChallengesCount = completedChallengesTotal,
-                currentLevel = provisionalLevel,
-                nowWallClockMs = nowMs
+            val recordsSnapshot = PersonalRecords(
+                totalFocusMinutes = totalFocusMinutesAll,
+                totalCompletedSessions = totalCompletedFocusCount,
+                longestSessionMinutes = longestSessionMin,
+                currentStreakDays = streakResult.currentStreakDays,
+                longestStreakDays = maxOf(streakResult.longestStreakDays, prevProfile.longestStreakDays),
+                goalCompletionRatePercent = goalCompletionRate,
+                totalActiveDays = activeDates.size
             )
+            val (achBonusXp, newlyUnlockedAchievements) = rewardAuthority.evaluateAndCreditAchievementsInTransaction(
+                records = recordsSnapshot,
+                completedChallengesCount = completedChallengesTotal,
+                provisionalLevel = provisionalLevel,
+                nowMs = nowMs
+            )
+            totalXpDelta += achBonusXp
 
-            newlyUnlockedAchievements.forEach { type ->
-                achievementDao.upsertAchievement(
-                    AchievementEntity(
-                        type = type.name,
-                        unlocked = true,
-                        unlockedAtMs = nowMs
+            // Also ensure dailyStats includes achievement bonus XP if unlocked on this session
+            if (achBonusXp > 0) {
+                dailyStatsDao.upsertDailyStats(
+                    updatedTodayStats.copy(
+                        xpEarned = (prevDaily?.xpEarned ?: 0) + totalXpDelta,
+                        seedsEarned = (prevDaily?.seedsEarned ?: 0) + totalSeedsDelta
                     )
                 )
-                totalXpDelta += type.bonusXp
             }
 
             // 9. Update UserProfile XP & Level
@@ -470,12 +509,9 @@ class FocusRepository(
             userProfileDao.upsertProfile(updatedProfile)
 
             SessionCompletionOutcome(
-                session = completedSession.copy(
-                    xpAwarded = completedSession.xpAwarded,
-                    seedsAwarded = completedSession.seedsAwarded
-                ),
+                session = completedSession,
                 newlyUnlockedAchievements = newlyUnlockedAchievements,
-                newlyCompletedChallenges = newlyCompletedChallenges,
+                newlyCompletedChallenges = challengeCredit.newlyCreditedChallenges,
                 streakBonusXp = streakBonus,
                 newLevel = finalLevel,
                 leveledUp = finalLevel > prevProfile.currentLevel

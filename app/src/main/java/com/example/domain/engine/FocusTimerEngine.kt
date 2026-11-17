@@ -22,7 +22,8 @@ object FocusTimerEngine {
         nowWallClockMs: Long,
         nowElapsedMs: Long,
         bootCount: Int,
-        sessionId: String = UUID.randomUUID().toString()
+        sessionId: String = UUID.randomUUID().toString(),
+        chainId: String? = null
     ): ActiveTimerState {
         val safeMinutes = plannedMinutes.coerceIn(1, 180)
         val durationMs = safeMinutes * 60_000L
@@ -36,7 +37,8 @@ object FocusTimerEngine {
             endElapsedRealtimeMs = nowElapsedMs + durationMs,
             expectedEndWallClockMs = nowWallClockMs + durationMs,
             bootCount = bootCount,
-            intentionLabel = intentionLabel.trim()
+            intentionLabel = intentionLabel.trim(),
+            chainId = chainId
         )
     }
 
@@ -127,6 +129,7 @@ object FocusTimerEngine {
         } else {
             XpLevelEngine.calculateSessionReward(state.sessionType, plannedMinutes)
         }
+        val grantsReward = !duplicateGuard && !state.sessionType.isBreak && (reward.xp > 0 || reward.seeds > 0)
         return FocusSession(
             id = state.sessionId,
             sessionType = state.sessionType,
@@ -139,7 +142,7 @@ object FocusTimerEngine {
             xpAwarded = reward.xp,
             seedsAwarded = reward.seeds,
             intentionLabel = state.intentionLabel,
-            rewardGranted = !duplicateGuard
+            rewardGranted = grantsReward
         )
     }
 

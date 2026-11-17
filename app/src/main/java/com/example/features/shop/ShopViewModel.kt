@@ -17,9 +17,18 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+enum class ShopFilterTab {
+    ALL,
+    OWNED,
+    THEME,
+    AVATAR,
+    DECORATION,
+    ENVIRONMENT
+}
+
 data class ShopUiState(
     val leafPointsBalance: Int = 0,
-    val selectedCategory: ShopCategory? = null,
+    val selectedFilter: ShopFilterTab = ShopFilterTab.ALL,
     val items: List<ShopCatalogItem> = emptyList()
 )
 
@@ -27,19 +36,26 @@ class ShopViewModel(
     private val container: AppContainer
 ) : ViewModel() {
 
-    private val selectedCategory = MutableStateFlow<ShopCategory?>(null)
+    private val selectedFilter = MutableStateFlow(ShopFilterTab.ALL)
     private val _events = MutableSharedFlow<String>()
     val events: SharedFlow<String> = _events.asSharedFlow()
 
     val uiState: StateFlow<ShopUiState> = combine(
         container.shopAndForestRepository.forestState,
         container.shopAndForestRepository.shopItems,
-        selectedCategory
-    ) { forest, items, cat ->
-        val filtered = if (cat == null) items else items.filter { it.category == cat }
+        selectedFilter
+    ) { forest, items, filter ->
+        val filtered = when (filter) {
+            ShopFilterTab.ALL -> items
+            ShopFilterTab.OWNED -> items.filter { it.owned }
+            ShopFilterTab.THEME -> items.filter { it.category == ShopCategory.THEME }
+            ShopFilterTab.AVATAR -> items.filter { it.category == ShopCategory.AVATAR }
+            ShopFilterTab.DECORATION -> items.filter { it.category == ShopCategory.DECORATION }
+            ShopFilterTab.ENVIRONMENT -> items.filter { it.category == ShopCategory.ENVIRONMENT }
+        }
         ShopUiState(
             leafPointsBalance = forest.spendableLeafPoints,
-            selectedCategory = cat,
+            selectedFilter = filter,
             items = filtered
         )
     }.stateIn(
@@ -54,8 +70,8 @@ class ShopViewModel(
         }
     }
 
-    fun selectCategory(category: ShopCategory?) {
-        selectedCategory.value = category
+    fun selectFilter(filter: ShopFilterTab) {
+        selectedFilter.value = filter
     }
 
     fun onItemAction(item: ShopCatalogItem) {
@@ -74,7 +90,8 @@ class ShopViewModel(
                     _events.emit(msg)
                 }
                 ShopActionResult.InsufficientPoints -> {
-                    _events.emit("Need ${item.costLeafPoints} Leaf Points — complete focus sessions or challenges to earn more.")
+                    val deficit = (item.costLeafPoints - uiState.value.leafPointsBalance).coerceAtLeast(1)
+                    _events.emit("Insufficient Leaf Points — need $deficit more to unlock ${item.name}.")
                 }
                 ShopActionResult.ItemNotFound -> Unit
             }
