@@ -2,50 +2,72 @@ name: Android CI
 
 on:
   push:
-    branches: [ main, "phase-0.1/**" ]
+    branches:
+      - main
+      - "phase-0.2/**"
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
+    name: Build, test, lint and assemble
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: 17
+          java-version: "21"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6.4.1
         with:
-          gradle-version: 9.3.1
+          validate-wrappers: true
 
-      - name: Run JVM and Robolectric unit tests
-        run: |
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew :app:testDebugUnitTest --stacktrace
-          else
-            gradle :app:testDebugUnitTest --stacktrace
-          fi
+      - name: Verify committed Gradle wrapper
+        run: ./gradlew --version
 
-      - name: Run Android Lint
+      - name: Generate ephemeral debug keystore
         run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew :app:lintDebug --stacktrace
-          else
-            gradle :app:lintDebug --stacktrace
-          fi
+          keytool -genkeypair -v \
+            -keystore "$GITHUB_WORKSPACE/debug.keystore" \
+            -storepass android -alias androiddebugkey -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
 
-      - name: Assemble Debug APK
-        run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew :app:assembleDebug --stacktrace
-          else
-            gradle :app:assembleDebug --stacktrace
-          fi
+      - name: Run unit and Robolectric tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Run Android lint
+        run: ./gradlew :app:lintDebug --stacktrace
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Upload test, lint and APK reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-reports
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.txt
+            app/build/outputs/apk/debug/*.apk
