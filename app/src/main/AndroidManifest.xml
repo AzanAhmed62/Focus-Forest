@@ -11,6 +11,12 @@
     <!-- Optional notifications for focus completion and gentle daily reminders (API 33+ runtime permission). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- WorkManager declares network-state tracking for network-constrained jobs. Focus Forest schedules
+         no network-constrained work and has no INTERNET permission, so remove it from the merged manifest. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+
     <!-- Least-privilege query for launchable apps without requesting QUERY_ALL_PACKAGES. -->
     <queries>
         <intent>
