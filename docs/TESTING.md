@@ -1,8 +1,8 @@
 # Testing Strategy & Suites
 
-Focus Forest uses local JVM unit tests and Robolectric tests (targeting SDK 36) without relying on emulators or ADB.
+Focus Forest uses local JVM unit tests and Robolectric tests (targeting SDK 36) without relying on emulators or ADB. Gradle, tests, and CI run on **JDK 21** while app bytecode targets Java 17.
 
-## Test Suites (`app/src/test/java/com/example/`)
+## Test Suites (`app/src/test/java/com/azanahmed/focusforest/`)
 
 1. **`domain/DomainEnginesTest.kt`**
    - Verifies `XpLevelEngine` rewards (focus blocks grant XP & seeds; `SHORT_BREAK` / `LONG_BREAK` strictly return `0 XP` and `0 seeds`).
@@ -18,12 +18,20 @@ Focus Forest uses local JVM unit tests and Robolectric tests (targeting SDK 36) 
 6. **`data/RoomMigrationAndLedgerTest.kt`**
    - Tests Room `1 -> 2` SQLite migration (`FocusForestDatabase.MIGRATION_1_2`) preserving pre-existing v1 rows and validating Room v2 schema & `reward_ledger`, verifies zero break rewards in repository persistence, tests `ChallengeRepository` atomic reward crediting, custom challenge edit/delete/archive, and `MAX_REWARDED_CUSTOM_CHALLENGES_PER_DAY = 3` cap.
 7. **`notifications/NotificationHelperTest.kt` & `TimerWorkerAndChainTest.kt`**
-   - Tests quiet-hours overnight logic, `SessionCompletionCoordinator` (stale, active reschedule, reboot interrupted, idempotent completion), Pomodoro Chain lifecycle (`POMODORO -> SHORT_BREAK -> POMODORO -> complete`), `WeeklySummaryCoordinator` quiet-hours gating, and `AmbientAudioController` state transitions.
+   - Tests quiet-hours overnight logic, `SessionCompletionCoordinator` (stale, active reschedule, reboot interrupted, idempotent completion), Pomodoro Chain lifecycle (`POMODORO -> SHORT_BREAK -> POMODORO -> complete`), auto-chain recovery after process death (`pendingStepSessionId` + `lastAdvancedSessionId`, exactly-once continuation), worker-only chain completion while no Activity exists, manual chains waiting for the user, reboot pausing an auto chain, final-focus chain completion, `WeeklySummaryCoordinator` quiet-hours gating, and `AmbientAudioController` state transitions.
 8. **`ui/FocusForestUiTest.kt`**
    - End-to-end Compose UI journey in Robolectric covering onboarding, single session start/pause/abort, Pomodoro Chain setup, ambient soundscape toggle, custom challenge validation & creation, 30D insights filter & calendar day selection, usage permission unavailable state, Botanical Shop `Owned` filter, dark theme switch, and strict local-first Privacy screen.
 
 ## Running Tests
 
+Use JDK 21 and the committed Gradle 9.3.1 wrapper:
+
 ```bash
-gradle :app:testDebugUnitTest
+JAVA_HOME=/opt/jdk-21 ./gradlew :app:testDebugUnitTest
+JAVA_HOME=/opt/jdk-21 ./gradlew :app:lintDebug
+JAVA_HOME=/opt/jdk-21 ./gradlew :app:assembleDebug
 ```
+
+The first Robolectric run downloads the 213 MB `android-all-instrumented` API 36 jar into the local Maven cache (`~/.m2/repository`); it is cached for later runs.
+
+Phase 0.2 local result: **37 tests executed, 37 passed, 0 failed, 0 skipped** on JDK 21.0.8, Gradle 9.3.1, Robolectric 4.16.1 (`@Config(sdk = [36])`). This includes `FocusViewModelCompletionTest`, which advances a fake clock and verifies the foreground ticker completes a session without cancelling its own save.

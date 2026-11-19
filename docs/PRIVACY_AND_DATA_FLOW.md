@@ -4,7 +4,7 @@ Focus Forest is engineered as a **strictly offline, local-first** Android applic
 
 ## Network & Telemetry Guarantees
 
-- **No Internet Access**: `AndroidManifest.xml` declares zero `android.permission.INTERNET` and zero `ACCESS_NETWORK_STATE`.
+- **No Internet Access**: `AndroidManifest.xml` declares zero `android.permission.INTERNET`. WorkManager's library manifest normally injects `ACCESS_NETWORK_STATE` for network-constrained work; Focus Forest schedules no network-constrained jobs and explicitly removes that permission with `tools:node="remove"` in the merged manifest.
 - **No Analytics, Crash SDKs, or Ads**: Unused Firebase, HTTP, location, camera, and third-party dependencies remain disabled in `app/build.gradle.kts`.
 - **No Backup Leakage**: `android:allowBackup="false"` is configured in `AndroidManifest.xml`, backed by explicit full-domain exclusions in `res/xml/backup_rules.xml` and `res/xml/data_extraction_rules.xml` (Room database, DataStore preferences, SharedPreferences, files, and external storage).
 
@@ -18,6 +18,10 @@ Focus Forest is engineered as a **strictly offline, local-first** Android applic
 ### Launcher App Visibility (`<queries>`)
 
 Instead of requesting broad `QUERY_ALL_PACKAGES`, Focus Forest declares only an `<intent>` query for `android.intent.action.MAIN` + `android.intent.category.LAUNCHER`. Launchable app scanning is never performed unless `PACKAGE_USAGE_STATS` is granted and the user accepted the explicit disclosure.
+
+### Library-Injected Permissions
+
+The merged manifest also contains normal (non-dangerous) permissions required by AndroidX/WorkManager for reliable background session completion and reboot rescheduling: `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`, and the AndroidX `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`. These do not grant network, location, camera, microphone, or contacts access. `ACCESS_NETWORK_STATE` is explicitly removed because no network-constrained work is scheduled.
 
 ## Honest Share & Export Boundaries
 

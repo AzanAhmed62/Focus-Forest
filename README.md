@@ -15,16 +15,18 @@ Focus Forest is a strictly offline, local-first native Android digital wellness 
 ## Project Configuration
 
 - **Application ID**: `com.azanahmed.focusforest`
-- **Build Namespace**: `com.example` (retained in this workspace template alongside `com/example/` package layout)
+- **Build Namespace**: `com.azanahmed.focusforest` (source packages live under `com/azanahmed/focusforest/`)
 - **Min / Compile / Target SDK**: API 26 / API 36 / API 36
-- **Java / Kotlin Toolchain**: Java 17 bytecode target, Kotlin 2.2.10, AGP 9.1.1, Room 2.7.0 (KSP schema export)
+- **Java / Kotlin Toolchain**: Java 17 bytecode target, JDK 21 for Gradle/tests/CI, Kotlin 2.2.10, AGP 9.1.1, Gradle 9.3.1, Room 2.7.0 (KSP schema export)
 
 ## Build & Verification
 
+The repository ships a genuine Gradle wrapper (Gradle 9.3.1 with the official distribution checksum). Use JDK 21:
+
 ```bash
-gradle :app:testDebugUnitTest
-gradle :app:lintDebug
-gradle :app:assembleDebug
+./gradlew :app:testDebugUnitTest
+./gradlew :app:lintDebug
+./gradlew :app:assembleDebug
 ```
 
 ## Privacy & Optional Usage Access
@@ -35,9 +37,7 @@ gradle :app:assembleDebug
 
 ## Known Limitations & Roadmap
 
-- `namespace = "com.example"` is retained in this workspace template while `applicationId` is `com.azanahmed.focusforest`.
-- Root Gradle wrapper binaries (`gradlew`, `gradle-wrapper.jar`) and `.git` history are not present in this cloud sandbox and should be initialized in a local checkout (`gradle wrapper --gradle-version 9.3.1`).
-- Physical device verification across Doze/WorkManager, real `AudioTrack` output, and OEM `UsageStatsManager` quirks remains pending.
+- Physical device verification across Doze/WorkManager, real `AudioTrack` output, and OEM `UsageStatsManager` quirks remains pending (no API 36 emulator or physical device was available in the Phase 0.2 environment).
 - Cloud sync, social challenge rooms, and Google Play Billing entitlements are intentionally deferred to a future server-backed phase.
 
 See the detailed project documentation:
@@ -46,4 +46,5 @@ See the detailed project documentation:
 - [Feature Status](docs/FEATURE_STATUS.md)
 - [Testing](docs/TESTING.md)
 - [Phase 0.1 Engineering Report](docs/PHASE_0_1_REPORT.md)
+- [Phase 0.2 Build Recovery & Device QA Report](docs/PHASE_0_2_REPORT.md)
 
