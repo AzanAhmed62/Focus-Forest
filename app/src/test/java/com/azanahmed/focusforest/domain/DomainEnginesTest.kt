@@ -67,6 +67,16 @@ class DomainEnginesTest {
     }
 
     @Test
+    fun `extreme lifetime xp cannot overflow level calculation`() {
+        val cappedThreshold = XpLevelEngine.xpRequiredForLevel(Int.MAX_VALUE)
+        assertTrue(cappedThreshold > 0)
+
+        val level = XpLevelEngine.levelForXp(Int.MAX_VALUE)
+        assertTrue(level in 2..10_000)
+        assertTrue(XpLevelEngine.xpRequiredForLevel(level) <= Int.MAX_VALUE)
+    }
+
+    @Test
     fun `streak calculator supports yesterday intact, rest days, and gentle grace`() {
         val today = LocalDate.of(2026, 11, 16)
         val activeOnlyPast = setOf(today.minusDays(1), today.minusDays(2))

@@ -4,6 +4,7 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.os.Process
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertContentDescriptionContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -73,6 +74,9 @@ class FocusForestUiTest {
 
         // Today dashboard shows Maya's intention card
         composeRule.onNodeWithText("Today's Focus Intention").assertIsDisplayed()
+        composeRule.onNodeWithTag("today_lazy_column")
+            .performScrollToNode(hasTestTag("weekly_goal_summary"))
+        composeRule.onNodeWithTag("weekly_goal_summary").assertIsDisplayed()
 
         // Navigate to Focus tab -> single session start/pause/abort
         composeRule.onNodeWithTag("nav_focus").performClick()
@@ -80,8 +84,12 @@ class FocusForestUiTest {
         composeRule.onNodeWithTag("focus_lazy_column").performScrollToNode(hasTestTag("start_focus_button"))
         composeRule.onNodeWithTag("start_focus_button").performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("timer_countdown_text")
+            .assertContentDescriptionContains("remaining", substring = true)
         composeRule.onNodeWithTag("pause_focus_button").assertIsDisplayed().performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("timer_countdown_text")
+            .assertContentDescriptionContains("paused", substring = true)
         composeRule.onNodeWithTag("abort_focus_button").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("confirm_abort_button").performClick()
@@ -154,6 +162,8 @@ class FocusForestUiTest {
         // Navigate back to Today & open Settings -> Theme -> Privacy -> Delete All Data reset check
         composeRule.onNodeWithTag("nav_today").performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("today_lazy_column")
+            .performScrollToNode(hasTestTag("today_settings_button"))
         composeRule.onNodeWithTag("today_settings_button").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("settings_lazy_column").performScrollToNode(hasTestTag("theme_chip_DARK"))

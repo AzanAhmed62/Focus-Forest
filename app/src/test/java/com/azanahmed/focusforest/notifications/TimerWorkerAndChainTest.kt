@@ -13,6 +13,8 @@ import com.azanahmed.focusforest.domain.engine.FocusTimerEngine
 import com.azanahmed.focusforest.domain.model.ActiveChainState
 import com.azanahmed.focusforest.domain.model.AmbientSoundPreset
 import com.azanahmed.focusforest.domain.model.ChainConfig
+import com.azanahmed.focusforest.domain.model.ChallengePeriod
+import com.azanahmed.focusforest.domain.model.ChallengeStatus
 import com.azanahmed.focusforest.domain.model.NotificationPreferences
 import com.azanahmed.focusforest.domain.model.SessionStatus
 import com.azanahmed.focusforest.domain.model.SessionType
@@ -554,6 +556,122 @@ class TimerWorkerAndChainTest {
         assertTrue(finalContinuation.chain!!.isCompleted)
         assertNull(finalContinuation.nextTimer)
         assertNull(prefs.activeTimerState.first())
+    }
+
+    @Test
+    fun `duplicate completion never clears a newer chain timer`() = runTest {
+        focusRepo.completeOnboarding("Idempotent", 50, UserIntention.WORK)
+        challengeRepo.ensureChallengesGenerated(false)
+        val config = ChainConfig(
+            totalFocusSessions = 2,
+            focusMinutes = 25,
+            shortBreakMinutes = 5,
+            autoTransition = true
+        ).validated()
+        val chain = ActiveChainState(chainId = "chain_duplicate_clear", config = config)
+        val focus1 = FocusTimerEngine.startSession(
+            sessionType = SessionType.POMODORO,
+            plannedMinutes = 25,
+            intentionLabel = "Duplicate",
+            nowWallClockMs = clock.nowWallClockMs(),
+            nowElapsedMs = clock.elapsedRealtimeMs(),
+            bootCount = clock.bootCount(),
+            sessionId = "duplicate_clear_f1",
+            chainId = chain.chainId
+        )
+        focusRepo.startChainStep(chain, focus1)
+        clock.wallMs += 25 * 60_000L
+        clock.elapsedMs += 25 * 60_000L
+
+        val outcome = focusRepo.recordCompletedSession(focus1)
+        val continuation = focusRepo.continueChainAfterCompletion(chain.chainId, outcome.session)
+        val nextTimer = continuation.nextTimer
+        assertNotNull(nextTimer)
+        assertEquals(nextTimer!!.sessionId, prefs.activeTimerState.first()!!.sessionId)
+
+        // A late worker replay of the already-completed session must not delete the new step.
+        val duplicate = focusRepo.recordCompletedSession(focus1)
+        assertTrue(duplicate.duplicateSuppressed)
+        assertEquals(nextTimer.sessionId, prefs.activeTimerState.first()!!.sessionId)
+        assertEquals(nextTimer.sessionId, prefs.activeChainState.first()!!.pendingStepSessionId)
+    }
+
+    @Test
+    fun `chain recovery never adopts an unrelated standalone timer`() = runTest {
+        focusRepo.completeOnboarding("Mismatch", 50, UserIntention.WORK)
+        val chain = ActiveChainState(
+            chainId = "chain_mismatch",
+            config = ChainConfig(totalFocusSessions = 2, autoTransition = true).validated()
+        )
+        focusRepo.saveActiveChainState(chain)
+
+        val standalone = FocusTimerEngine.startSession(
+            sessionType = SessionType.DEEP_WORK,
+            plannedMinutes = 50,
+            intentionLabel = "Standalone",
+            nowWallClockMs = clock.nowWallClockMs(),
+            nowElapsedMs = clock.elapsedRealtimeMs(),
+            bootCount = clock.bootCount(),
+            sessionId = "standalone_timer",
+            chainId = null
+        )
+        focusRepo.saveActiveTimerState(standalone)
+
+        val recovered = focusRepo.recoverChainState()
+        assertNull(recovered.nextTimer)
+        assertNotNull(recovered.chain)
+        assertTrue(recovered.chain!!.waitingForUserNextStep)
+        assertEquals(standalone.sessionId, prefs.activeTimerState.first()!!.sessionId)
+    }
+
+    @Test
+    fun `stale interruption cannot clear a newer chain step timer`() = runTest {
+        focusRepo.completeOnboarding("Interrupt", 50, UserIntention.WORK)
+        val chain = ActiveChainState(
+            chainId = "chain_interrupt_guard",
+            config = ChainConfig(totalFocusSessions = 2, autoTransition = true).validated()
+        )
+        val newStep = FocusTimerEngine.startSession(
+            sessionType = SessionType.SHORT_BREAK,
+            plannedMinutes = 5,
+            intentionLabel = "Break",
+            nowWallClockMs = clock.nowWallClockMs(),
+            nowElapsedMs = clock.elapsedRealtimeMs(),
+            bootCount = clock.bootCount(),
+            sessionId = "new_chain_step",
+            chainId = chain.chainId
+        )
+        focusRepo.startChainStep(chain, newStep)
+
+        focusRepo.markChainWaitingAfterInterruption(chain.chainId, "old_interrupted_step")
+        assertEquals(newStep.sessionId, prefs.activeTimerState.first()!!.sessionId)
+        assertFalse(prefs.activeChainState.first()!!.waitingForUserNextStep)
+
+        focusRepo.markChainWaitingAfterInterruption(chain.chainId, newStep.sessionId)
+        assertNull(prefs.activeTimerState.first())
+        assertTrue(prefs.activeChainState.first()!!.waitingForUserNextStep)
+    }
+
+    @Test
+    fun `challenge history exposes expired daily challenges without duplicating today`() = runTest {
+        focusRepo.completeOnboarding("History", 50, UserIntention.STUDYING)
+        val originalWallMs = clock.wallMs
+        val today = clock.todayLocalDate()
+        val yesterday = today.minusDays(1)
+
+        clock.wallMs = originalWallMs - 24L * 60L * 60L * 1_000L
+        challengeRepo.ensureChallengesGenerated(baselineReady = false)
+        clock.wallMs = originalWallMs
+        challengeRepo.ensureChallengesGenerated(baselineReady = false)
+        challengeRepo.refreshProgress(usageBaseline = null)
+
+        val history = challengeRepo.challengeHistory.first()
+        val yesterdayHistory = history.filter {
+            it.period == ChallengePeriod.DAILY && it.periodKey == yesterday.toString()
+        }
+        assertTrue(yesterdayHistory.isNotEmpty())
+        assertTrue(yesterdayHistory.all { it.status == ChallengeStatus.EXPIRED })
+        assertTrue(history.none { it.period == ChallengePeriod.DAILY && it.periodKey == today.toString() })
     }
 
     @Test

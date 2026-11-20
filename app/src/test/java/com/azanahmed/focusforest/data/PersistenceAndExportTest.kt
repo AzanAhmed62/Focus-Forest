@@ -25,6 +25,7 @@ import com.azanahmed.focusforest.domain.model.UsagePermissionStatus
 import com.azanahmed.focusforest.domain.model.UsageQueryResult
 import com.azanahmed.focusforest.domain.model.UserIntention
 import com.azanahmed.focusforest.platform.usage.UsageStatsGateway
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
@@ -62,8 +63,12 @@ private class FakeUsageStatsGateway(
 ) : UsageStatsGateway {
     var launchableAppsCalls: Int = 0
     var queryCalls: Int = 0
+    var throwCancellationOnPermission: Boolean = false
 
-    override fun checkUsagePermission(): UsagePermissionStatus = permission
+    override fun checkUsagePermission(): UsagePermissionStatus {
+        if (throwCancellationOnPermission) throw CancellationException("cancelled by test")
+        return permission
+    }
     override fun getLaunchableApps(): List<LaunchableAppInfo> {
         launchableAppsCalls++
         return listOf(
@@ -215,6 +220,28 @@ class PersistenceAndExportTest {
         usageRepo.disableAndDeleteUsageData()
         assertTrue(db.usageDao().getSnapshotsOnce().isEmpty())
         assertFalse(prefs.usageTrackingEnabled.first())
+    }
+
+    @Test
+    fun `usage refresh propagates cancellation instead of caching a fallback error`() = runTest {
+        val usageRepo = UsageRepository(db, prefs, usageGateway, clock)
+        usageGateway.throwCancellationOnPermission = true
+
+        var cancelled = false
+        try {
+            usageRepo.refreshUsageData(forceRefresh = true)
+        } catch (_: CancellationException) {
+            cancelled = true
+        }
+
+        assertTrue(cancelled)
+        assertFalse(usageRepo.dashboardState.value.isRefreshing)
+        assertEquals(null, usageRepo.dashboardState.value.queryErrorMessage)
+
+        usageGateway.throwCancellationOnPermission = false
+        val recovered = usageRepo.refreshUsageData(forceRefresh = true)
+        assertEquals(UsagePermissionStatus.DENIED, recovered.permissionStatus)
+        assertFalse(recovered.isRefreshing)
     }
 
     @Test
