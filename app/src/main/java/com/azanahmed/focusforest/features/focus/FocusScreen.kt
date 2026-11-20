@@ -52,6 +52,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,7 +82,6 @@ fun FocusScreen(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> viewModel.onAppForeground()
-                Lifecycle.Event.ON_RESUME -> viewModel.onForegroundSync()
                 Lifecycle.Event.ON_STOP -> viewModel.onAppBackground()
                 else -> Unit
             }
@@ -370,13 +371,27 @@ fun FocusScreen(
                             }
 
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                val countdownDescription = when {
+                                    active == null ->
+                                        "${formatDurationForAccessibility(displayRemainingMs)} " +
+                                            "${displayType.displayName} ready to start"
+                                    active.status == SessionStatus.PAUSED ->
+                                        "${formatDurationForAccessibility(displayRemainingMs)} remaining, paused"
+                                    else ->
+                                        "${formatDurationForAccessibility(displayRemainingMs)} remaining"
+                                }
                                 Text(
                                     text = formatDurationMs(displayRemainingMs),
                                     fontFamily = JetBrainsMonoFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 38.sp,
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.testTag("timer_countdown_text")
+                                    modifier = Modifier
+                                        .testTag("timer_countdown_text")
+                                        // TalkBack can read "24:12" as a ratio or time of day.
+                                        // Give it explicit units; no live region, so it will not
+                                        // interrupt the user every second.
+                                        .semantics { contentDescription = countdownDescription }
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
@@ -601,4 +616,20 @@ private fun formatDurationMs(ms: Long): String {
     } else {
         "%02d:%02d".format(minutes, seconds)
     }
+}
+
+/**
+ * Spoken countdown for TalkBack. The visual mono countdown uses "mm:ss", which some screen
+ * readers read as a ratio or clock time, so expose explicit units instead.
+ */
+private fun formatDurationForAccessibility(ms: Long): String {
+    val totalSeconds = ((ms + 999L) / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return buildList {
+        if (hours > 0L) add(if (hours == 1L) "1 hour" else "$hours hours")
+        if (minutes > 0L) add(if (minutes == 1L) "1 minute" else "$minutes minutes")
+        if (seconds > 0L || isEmpty()) add(if (seconds == 1L) "1 second" else "$seconds seconds")
+    }.joinToString(" ")
 }

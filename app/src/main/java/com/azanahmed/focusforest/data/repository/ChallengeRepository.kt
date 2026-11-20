@@ -16,6 +16,7 @@ import com.azanahmed.focusforest.domain.model.SessionStatus
 import com.azanahmed.focusforest.domain.model.UsageBaselineStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import java.time.LocalDate
 import java.util.UUID
 
@@ -35,14 +36,31 @@ class ChallengeRepository(
     private val dailyStatsDao = db.dailyStatsDao()
     private val userProfileDao = db.userProfileDao()
 
-    val challenges: Flow<List<ChallengeItem>> = combine(
+    private val allChallengeItems: Flow<List<ChallengeItem>> = combine(
         challengeDao.observeChallenges(),
         challengeDao.observeChallengeProgress()
     ) { entities, progressList ->
         val progressById = progressList.associateBy { it.challengeId }
-        entities
-            .filter { !it.isArchived }
-            .map { it.toDomain(progressById[it.id]) }
+        entities.map { it.toDomain(progressById[it.id]) }
+    }
+
+    val challenges: Flow<List<ChallengeItem>> = allChallengeItems.map { items ->
+        items.filter { !it.isArchived }
+    }
+
+    /**
+     * Completed past challenges and archived custom challenges. Current-period completed
+     * challenges remain in [challenges] until their period rolls over.
+     */
+    val challengeHistory: Flow<List<ChallengeItem>> = allChallengeItems.map { items ->
+        val today = clockProvider.todayLocalDate()
+        items
+            .filter {
+                it.isArchived ||
+                    it.status == ChallengeStatus.EXPIRED ||
+                    ChallengeEngine.isPeriodExpired(it, today)
+            }
+            .sortedByDescending { it.completedAtMs ?: it.createdAtMs }
     }
 
     suspend fun ensureChallengesGenerated(baselineReady: Boolean) {

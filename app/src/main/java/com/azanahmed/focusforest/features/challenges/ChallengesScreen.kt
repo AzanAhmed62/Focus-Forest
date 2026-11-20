@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LocalCafe
 import androidx.compose.material.icons.rounded.Park
 import androidx.compose.material.icons.rounded.Shield
@@ -253,8 +254,17 @@ fun ChallengesScreen(
                     Spacer(Modifier.height(6.dp))
                     Text("Weekly Challenges", style = MaterialTheme.typography.titleLarge)
                 }
-                items(state.weeklyChallenges, key = { it.id }) { challenge ->
-                    ChallengeCard(challenge = challenge)
+                if (state.weeklyChallenges.isEmpty()) {
+                    item {
+                        EmptyStateCard(
+                            title = "Preparing this week's challenges",
+                            subtitle = "Weekly goals appear once your current week begins."
+                        )
+                    }
+                } else {
+                    items(state.weeklyChallenges, key = { it.id }) { challenge ->
+                        ChallengeCard(challenge = challenge)
+                    }
                 }
 
                 if (state.customChallenges.isNotEmpty()) {
@@ -270,6 +280,21 @@ fun ChallengesScreen(
                         )
                     }
                 }
+
+                if (state.historyChallenges.isNotEmpty()) {
+                    item {
+                        Spacer(Modifier.height(6.dp))
+                        Text("Challenge History", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            text = "Completed and expired goals stay on your device so you can see your follow-through over time.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    items(state.historyChallenges, key = { "history_${it.id}" }) { challenge ->
+                        ChallengeCard(challenge = challenge)
+                    }
+                }
             }
         }
     }
@@ -282,6 +307,7 @@ private fun ChallengeCard(
     onDelete: (() -> Unit)? = null
 ) {
     val isDone = challenge.status == ChallengeStatus.COMPLETED
+    val isExpired = challenge.status == ChallengeStatus.EXPIRED
     val icon = when (challenge.iconType) {
         ChallengeIconType.TIMER -> Icons.Rounded.Timer
         ChallengeIconType.PINE_TREE -> Icons.Rounded.Park
@@ -298,8 +324,12 @@ private fun ChallengeCard(
     }
 
     BotanicalCard(
-        containerColor = if (isDone) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-        else MaterialTheme.colorScheme.surface
+        containerColor = when {
+            isDone -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+            isExpired -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            else -> MaterialTheme.colorScheme.surface
+        },
+        modifier = Modifier.testTag("challenge_card_${challenge.id}")
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -308,9 +338,21 @@ private fun ChallengeCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                 Icon(
-                    imageVector = if (isDone) Icons.Rounded.CheckCircle else icon,
-                    contentDescription = null,
-                    tint = if (isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                    imageVector = when {
+                        isDone -> Icons.Rounded.CheckCircle
+                        isExpired -> Icons.Rounded.History
+                        else -> icon
+                    },
+                    contentDescription = when {
+                        isDone -> "Completed challenge"
+                        isExpired -> "Expired challenge"
+                        else -> null
+                    },
+                    tint = when {
+                        isDone -> MaterialTheme.colorScheme.primary
+                        isExpired -> MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> MaterialTheme.colorScheme.secondary
+                    },
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(Modifier.width(10.dp))
@@ -386,7 +428,11 @@ private fun ChallengeCard(
                 Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(fmt)
             }
             Text(
-                text = if (isDone && completedTime != null) "Completed $completedTime" else "+${challenge.rewardSeeds} seeds",
+                text = when {
+                    isDone && completedTime != null -> "Completed $completedTime"
+                    isExpired -> "Expired • progress saved"
+                    else -> "+${challenge.rewardSeeds} seeds"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             )

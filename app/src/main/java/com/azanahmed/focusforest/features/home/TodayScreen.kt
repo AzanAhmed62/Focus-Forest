@@ -110,7 +110,8 @@ fun TodayScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .widthIn(max = 620.dp),
+                .widthIn(max = 620.dp)
+                .testTag("today_lazy_column"),
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -380,6 +381,12 @@ fun TodayScreen(
 
             // 6. Weekly Focus Progress Card
             item {
+                val weeklyFraction = if (state.weeklyGoalMinutes <= 0) {
+                    0f
+                } else {
+                    (state.weeklyFocusMinutes.toFloat() / state.weeklyGoalMinutes.toFloat())
+                        .coerceIn(0f, 1f)
+                }
                 BotanicalCard {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -400,6 +407,23 @@ fun TodayScreen(
                     FocusTrendBarChart(
                         days = state.weeklyStats,
                         dailyGoalMinutes = state.todayStats.goalMinutes
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        progress = { weeklyFraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .testTag("weekly_goal_progress")
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "${state.weeklyFocusMinutes} / ${state.weeklyGoalMinutes} min • " +
+                            "${(weeklyFraction * 100).toInt()}% of your weekly intention",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("weekly_goal_summary")
                     )
                 }
             }

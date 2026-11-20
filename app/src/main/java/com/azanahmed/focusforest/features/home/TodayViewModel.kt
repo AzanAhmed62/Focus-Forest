@@ -37,6 +37,8 @@ data class TodayUiState(
     val usageState: UsageDashboardState = UsageDashboardState(),
     val activeChain: ActiveChainState? = null,
     val levelProgressFraction: Float = 0f,
+    val weeklyFocusMinutes: Int = 0,
+    val weeklyGoalMinutes: Int = 0,
     val isFirstTimeEmpty: Boolean = false
 )
 
@@ -78,6 +80,14 @@ class TodayViewModel(
             statsMap[d.toString()] ?: DailyStats(localDate = d.toString(), goalMinutes = goalMinutes)
         }
 
+        // Calendar-week intention (Monday-Sunday) so the Today card matches "This Week".
+        val weekStart = todayDate.minusDays((todayDate.dayOfWeek.value - 1).toLong())
+        val weeklyFocusMinutes = (0L..6L)
+            .map { weekStart.plusDays(it) }
+            .filter { !it.isAfter(todayDate) }
+            .sumOf { statsMap[it.toString()]?.focusMinutes ?: 0 }
+        val weeklyGoalMinutes = (goalMinutes * 7).coerceAtLeast(1)
+
         val todayChallenges = challenges.filter { it.period == ChallengePeriod.DAILY && it.periodKey == todayStr }
         val highlight = todayChallenges.firstOrNull { it.status == ChallengeStatus.ACTIVE }
             ?: todayChallenges.firstOrNull()
@@ -105,6 +115,8 @@ class TodayViewModel(
             usageState = usage,
             activeChain = activeChain,
             levelProgressFraction = levelInfo.progressFraction,
+            weeklyFocusMinutes = weeklyFocusMinutes,
+            weeklyGoalMinutes = weeklyGoalMinutes,
             isFirstTimeEmpty = records.totalCompletedSessions == 0 && todayStats.focusMinutes == 0
         )
     }.stateIn(

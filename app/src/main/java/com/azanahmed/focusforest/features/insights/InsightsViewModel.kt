@@ -230,6 +230,8 @@ class InsightsViewModel(
     fun confirmDeleteUsageData() {
         viewModelScope.launch {
             container.usageRepository.disableAndDeleteUsageData()
+            val baseline = container.usageRepository.dashboardState.value.baselineStatus
+            container.challengeRepository.refreshProgress(baseline)
             localControls.update { it.copy(showDeleteUsageDialog = false) }
         }
     }

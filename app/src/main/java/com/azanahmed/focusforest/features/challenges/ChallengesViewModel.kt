@@ -21,6 +21,7 @@ data class ChallengesUiState(
     val dailyChallenges: List<ChallengeItem> = emptyList(),
     val weeklyChallenges: List<ChallengeItem> = emptyList(),
     val customChallenges: List<ChallengeItem> = emptyList(),
+    val historyChallenges: List<ChallengeItem> = emptyList(),
     val showCreateOrEditDialog: Boolean = false,
     val editingChallengeId: String? = null,
     val newTitle: String = "",
@@ -40,15 +41,22 @@ class ChallengesViewModel(
 
     val uiState: StateFlow<ChallengesUiState> = combine(
         container.challengeRepository.challenges,
+        container.challengeRepository.challengeHistory,
         dialogState
-    ) { all, local ->
+    ) { all, history, local ->
         val todayStr = container.clockProvider.todayLocalDate().toString()
         val weekKey = ChallengeEngine.weekKeyFor(container.clockProvider.todayLocalDate())
 
+        val daily = all.filter { it.period == ChallengePeriod.DAILY && it.periodKey == todayStr }
+        val weekly = all.filter { it.period == ChallengePeriod.WEEKLY && it.periodKey == weekKey }
+        val custom = all.filter { it.period == ChallengePeriod.CUSTOM }
+        val visibleIds = (daily.map { it.id } + weekly.map { it.id } + custom.map { it.id }).toSet()
+
         local.copy(
-            dailyChallenges = all.filter { it.period == ChallengePeriod.DAILY && it.periodKey == todayStr },
-            weeklyChallenges = all.filter { it.period == ChallengePeriod.WEEKLY && it.periodKey == weekKey },
-            customChallenges = all.filter { it.period == ChallengePeriod.CUSTOM }
+            dailyChallenges = daily,
+            weeklyChallenges = weekly,
+            customChallenges = custom,
+            historyChallenges = history.filterNot { it.id in visibleIds }
         )
     }.stateIn(
         scope = viewModelScope,
@@ -58,9 +66,10 @@ class ChallengesViewModel(
 
     init {
         viewModelScope.launch {
-            val baseline = container.usageRepository.dashboardState.value.baselineStatus
-            container.challengeRepository.ensureChallengesGenerated(baseline.isBaselineReady)
-            container.challengeRepository.refreshProgress(baseline)
+            // Do not evaluate usage-based challenges against the default empty dashboard.
+            val usage = container.usageRepository.refreshUsageData()
+            container.challengeRepository.ensureChallengesGenerated(usage.baselineStatus.isBaselineReady)
+            container.challengeRepository.refreshProgress(usage.baselineStatus)
         }
     }
 
