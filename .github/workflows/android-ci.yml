@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "phase-0.2/**"
+      - "phase-0.3/**"
   pull_request:
     branches:
       - main
