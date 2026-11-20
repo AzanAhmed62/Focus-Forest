@@ -6,11 +6,12 @@ Focus Forest is a strictly offline, local-first native Android digital wellness 
 
 ## Core Capabilities
 
-- **Monotonic Focus Timer & Pomodoro Chain Mode**: Single focus blocks (`Pomodoro`, `Deep Work`, `Custom Focus`) and intentional rests (`Short Break`, `Long Break`), plus structured multi-round Pomodoro Chains with configurable focus/break durations, long-break cadence, and auto-vs-manual step transitions. Timer state persists across backgrounding, process death, and device reboots via `ClockProvider` monotonic elapsed realtime checks.
+- **Monotonic Focus Timer & Pomodoro Chain Mode**: Single focus blocks (`Pomodoro`, `Deep Work`, `Custom Focus`) and intentional rests (`Short Break`, `Long Break`), plus structured multi-round Pomodoro Chains with configurable focus/break durations, long-break cadence, and auto-vs-manual step transitions. Timer state persists across backgrounding, process death, and device reboots via `ClockProvider` monotonic elapsed realtime checks. Phase 0.3 adds a synchronous start guard, conditional timer clearing, remaining-time recovery for persisted chain steps, and cancellation-safe completion workers.
 - **Offline Ambient Soundscapes**: Pure procedural PCM DSP audio synthesis (`AndroidAmbientAudioController` backed by `AudioTrack`) for Soft Rain, Forest Wind, Ocean Waves, Hearth Ember, and Deep Focus Hum—zero audio assets downloaded or streamed.
 - **Optional Android Usage Insights**: Explicit, plain-language consent flow (`PACKAGE_USAGE_STATS`) and least-privilege `<queries>` launcher discovery (no `QUERY_ALL_PACKAGES`), exact millisecond aggregation including sub-minute apps (`<1m`), distinct `COMPLETE` / `PARTIAL_TODAY` / `ZERO_USAGE` / `UNAVAILABLE` states, daily usage budget tracking, and honest completed-day and 7-day-vs-7-day comparisons (partial today is never compared against finished days).
-- **Challenges, Achievements, Botanical Shop & Virtual Forest**: Transactional `RewardAuthority` with `RewardLedgerEntity` deduplication across sessions, deterministic daily/weekly challenges, user-defined custom challenges (with validation, editing, deletion/archiving, and anti-farming daily caps), milestone achievements, Leaf Points, and interactive Canvas botanical forest scenes.
-- **Local Privacy & Data Portability**: Zero `INTERNET` permission, `allowBackup="false"`, excluded cloud backup & device transfer rules, privacy-safe share formatting, CSV exports via `FileProvider`, and complete one-tap local reset (`DataManagementRepository.deleteAllLocalData`).
+- **Challenges, Achievements, Botanical Shop & Virtual Forest**: Transactional `RewardAuthority` with `RewardLedgerEntity` deduplication across sessions, deterministic daily/weekly challenges, user-defined custom challenges (with validation, editing, deletion/archiving, and anti-farming daily caps), local challenge history for completed and expired goals, milestone achievements, Leaf Points, and interactive Canvas botanical forest scenes.
+- **Weekly Focus Intention**: The Today screen derives a Monday–Sunday focus total and weekly target from the existing daily goal, with a local progress bar and plain-language summary. No new storage or server dependency is introduced.
+- **Local Privacy & Data Portability**: Zero `INTERNET` permission, `allowBackup="false"`, excluded cloud backup & device transfer rules, privacy-safe share formatting, CSV exports via `FileProvider`, and complete one-tap local reset (`DataManagementRepository.deleteAllLocalData`). Challenge history and weekly summaries are derived from the same local tables and never leave the device.
 
 ## Project Configuration
 
@@ -24,10 +25,12 @@ Focus Forest is a strictly offline, local-first native Android digital wellness 
 The repository ships a genuine Gradle wrapper (Gradle 9.3.1 with the official distribution checksum). Use JDK 21:
 
 ```bash
-./gradlew :app:testDebugUnitTest
-./gradlew :app:lintDebug
-./gradlew :app:assembleDebug
+JAVA_HOME=/opt/jdk-21 ./gradlew :app:testDebugUnitTest --no-daemon -Djava.awt.headless=true
+JAVA_HOME=/opt/jdk-21 ./gradlew :app:lintDebug --no-daemon -Djava.awt.headless=true
+JAVA_HOME=/opt/jdk-21 ./gradlew :app:assembleDebug --no-daemon -Djava.awt.headless=true
 ```
+
+Phase 0.3 local verification: **43/43 JVM + Robolectric tests passed**, lint completed with **0 errors**, and a debug APK was assembled. See the [Phase 0.3 report](docs/PHASE_0_3_REPORT.md) for exact results and the APK SHA-256. CI is configured for `main`, `phase-0.2/**`, and `phase-0.3/**`, but was not pushed or re-run remotely in this phase.
 
 ## Privacy & Optional Usage Access
 
@@ -37,8 +40,9 @@ The repository ships a genuine Gradle wrapper (Gradle 9.3.1 with the official di
 
 ## Known Limitations & Roadmap
 
-- Physical device verification across Doze/WorkManager, real `AudioTrack` output, and OEM `UsageStatsManager` quirks remains pending (no API 36 emulator or physical device was available in the Phase 0.2 environment).
-- Cloud sync, social challenge rooms, and Google Play Billing entitlements are intentionally deferred to a future server-backed phase.
+- Physical API 36 device/emulator QA is still unavailable in this environment. Phase 0.2 device QA was performed on a OnePlus 6T running Android 11 / API 30; Phase 0.3 logic is covered by JVM/Robolectric tests, not by a new physical run.
+- TalkBack behavior is not claimed as verified. The focus countdown now exposes an explicit spoken duration, but a full TalkBack/font-scale pass remains a device task.
+- Cloud sync, social challenge rooms, and Google Play Billing entitlements are intentionally deferred to a future server-backed phase. Any such work must first satisfy [Future Backend Boundaries](docs/FUTURE_BACKEND_BOUNDARIES.md); the current app remains local-only.
 
 See the detailed project documentation:
 - [Architecture](docs/ARCHITECTURE.md)
@@ -47,4 +51,7 @@ See the detailed project documentation:
 - [Testing](docs/TESTING.md)
 - [Phase 0.1 Engineering Report](docs/PHASE_0_1_REPORT.md)
 - [Phase 0.2 Build Recovery & Device QA Report](docs/PHASE_0_2_REPORT.md)
+- [Phase 0.3 Baseline](docs/PHASE_0_3_BASELINE.md)
+- [Phase 0.3 Hardening & Feature Report](docs/PHASE_0_3_REPORT.md)
+- [Future Backend Boundaries](docs/FUTURE_BACKEND_BOUNDARIES.md)
 

@@ -27,4 +27,14 @@ The merged manifest also contains normal (non-dangerous) permissions required by
 
 - **Share Text (`ShareFormatter`)**: Formats focus session milestones, streaks, and tree counts only. Observed app names, package names, and raw usage stats are never included in shareable text.
 - **CSV Export (`CsvExporter` + `FileProvider`)**: Exports focus sessions and daily focus summaries from `cache/exports/` using a private non-exported `FileProvider`.
-- **Delete All Local Data (`DataManagementRepository.deleteAllLocalData`)**: Stops procedural ambient audio, cancels all WorkManager jobs (`FocusWorkers.cancelAll`), clears active notifications, deletes cached CSV exports, wipes all Room tables (`FocusForestDatabase.clearAllUserData`), clears DataStore Preferences, and resets `UsageRepository` memory cache.
+- **Delete All Local Data (`DataManagementRepository.deleteAllLocalData`)**: Stops procedural ambient audio, cancels all WorkManager jobs (`FocusWorkers.cancelAll`), clears active notifications, deletes cached CSV exports, wipes all Room tables (`FocusForestDatabase.clearAllUserData`), clears DataStore Preferences, and resets `UsageRepository` memory cache. Challenge history is stored in the existing `challenges` / `challenge_progress` tables, so the same wipe removes it.
+
+## Phase 0.3 Privacy Review
+
+Phase 0.3 did not add a permission, network dependency, account, SDK, or database table.
+
+- **Challenge History** reads archived/expired rows from the existing local challenge tables and never uploads them.
+- **Weekly Focus Intention** is computed in memory from existing `daily_stats` rows; no new profile or analytics record is written.
+- **Cancellation and recovery fixes** change control flow only. They do not add logging, telemetry, or data collection.
+- **No schema change**: the Room database remains version 2 with `MIGRATION_1_2`; no destructive migration was introduced.
+- **No backend boundary crossed**: the merged manifest still declares zero `INTERNET` permission. Any future network feature must follow [FUTURE_BACKEND_BOUNDARIES.md](FUTURE_BACKEND_BOUNDARIES.md).
