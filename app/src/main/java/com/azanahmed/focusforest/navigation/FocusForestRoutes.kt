@@ -9,7 +9,16 @@ data object OnboardingRoute
 data object TodayRoute
 
 @Serializable
-data object FocusRoute
+data class FocusRoute(
+    val routineId: String = "",
+    val requestId: String = ""
+)
+
+@Serializable
+data object RoutinesRoute
+
+@Serializable
+data object HistoryRoute
 
 @Serializable
 data object ChallengesRoute

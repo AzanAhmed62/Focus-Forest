@@ -54,6 +54,8 @@ import com.azanahmed.focusforest.features.insights.InsightsScreen
 import com.azanahmed.focusforest.features.insights.InsightsViewModel
 import com.azanahmed.focusforest.features.onboarding.OnboardingScreen
 import com.azanahmed.focusforest.features.onboarding.OnboardingViewModel
+import com.azanahmed.focusforest.features.routines.RoutinesScreen
+import com.azanahmed.focusforest.features.routines.RoutinesViewModel
 import com.azanahmed.focusforest.features.settings.PrivacyScreen
 import com.azanahmed.focusforest.features.settings.SettingsScreen
 import com.azanahmed.focusforest.features.settings.SettingsViewModel
@@ -70,7 +72,7 @@ private data class TopLevelDestination(
 
 private val topLevelDestinations = listOf(
     TopLevelDestination(TodayRoute, "Today", Icons.Rounded.WbSunny, Icons.Outlined.WbSunny, "nav_today"),
-    TopLevelDestination(FocusRoute, "Focus", Icons.Rounded.Timer, Icons.Outlined.Timer, "nav_focus"),
+    TopLevelDestination(FocusRoute(), "Focus", Icons.Rounded.Timer, Icons.Outlined.Timer, "nav_focus"),
     TopLevelDestination(ChallengesRoute, "Challenges", Icons.Rounded.Flag, Icons.Outlined.Flag, "nav_challenges"),
     TopLevelDestination(InsightsRoute, "Insights", Icons.Rounded.Insights, Icons.Outlined.Insights, "nav_insights"),
     TopLevelDestination(ForestRoute, "Forest", Icons.Rounded.Forest, Icons.Outlined.Forest, "nav_forest")
@@ -185,7 +187,7 @@ fun FocusForestNavHost(
                             val vm: TodayViewModel = viewModel(factory = TodayViewModel.Factory(container))
                             TodayScreen(
                                 viewModel = vm,
-                                onQuickStartFocus = { navigateTopLevel(FocusRoute) },
+                                onQuickStartFocus = { navigateTopLevel(FocusRoute()) },
                                 onOpenChallenges = { navigateTopLevel(ChallengesRoute) },
                                 onOpenInsights = { navigateTopLevel(InsightsRoute) },
                                 onOpenForest = { navigateTopLevel(ForestRoute) },
@@ -195,7 +197,23 @@ fun FocusForestNavHost(
 
                         composable<FocusRoute> {
                             val vm: FocusViewModel = viewModel(factory = FocusViewModel.Factory(container, appContext))
-                            FocusScreen(viewModel = vm)
+                            FocusScreen(viewModel = vm, onOpenRoutines = { navController.navigate(RoutinesRoute) })
+                        }
+
+                        composable<RoutinesRoute> {
+                            val vm: RoutinesViewModel = viewModel(factory = RoutinesViewModel.Factory(container))
+                            RoutinesScreen(
+                                viewModel = vm,
+                                onBack = { navController.popBackStack() },
+                                onStartRoutine = { routineId ->
+                                    navController.navigate(
+                                        FocusRoute(
+                                            routineId = routineId,
+                                            requestId = java.util.UUID.randomUUID().toString()
+                                        )
+                                    )
+                                }
+                            )
                         }
 
                         composable<ChallengesRoute> {

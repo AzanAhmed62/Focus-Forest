@@ -1,9 +1,12 @@
 package com.azanahmed.focusforest.features.focus
 
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.azanahmed.focusforest.core.di.AppContainer
 import com.azanahmed.focusforest.data.repository.SessionCompletionOutcome
 import com.azanahmed.focusforest.domain.engine.FocusTimerEngine
@@ -12,8 +15,11 @@ import com.azanahmed.focusforest.domain.model.ActiveChainState
 import com.azanahmed.focusforest.domain.model.ActiveTimerState
 import com.azanahmed.focusforest.domain.model.AmbientSoundPreset
 import com.azanahmed.focusforest.domain.model.ChainConfig
+import com.azanahmed.focusforest.domain.model.FocusCategory
+import com.azanahmed.focusforest.domain.model.FocusRoutine
 import com.azanahmed.focusforest.domain.model.SessionStatus
 import com.azanahmed.focusforest.domain.model.SessionType
+import com.azanahmed.focusforest.domain.model.validation
 import com.azanahmed.focusforest.notifications.SessionCompletionWorker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -46,7 +52,11 @@ data class FocusUiState(
     val ambientPreset: AmbientSoundPreset = AmbientSoundPreset.NONE,
     val ambientVolume: Float = 0.55f,
     val ambientPlayWithSession: Boolean = true,
-    val isAmbientPlaying: Boolean = false
+    val isAmbientPlaying: Boolean = false,
+    val routines: List<FocusRoutine> = emptyList(),
+    val categories: List<FocusCategory> = emptyList(),
+    val selectedCategoryId: String? = null,
+    val isReady: Boolean = false
 ) {
     val plannedMinutesForSelection: Int
         get() = when {
@@ -55,11 +65,15 @@ data class FocusUiState(
             selectedType == SessionType.CUSTOM -> customMinutes
             else -> selectedType.defaultMinutes
         }
+
+    val selectedCategory: FocusCategory?
+        get() = categories.firstOrNull { it.id == selectedCategoryId }
 }
 
 class FocusViewModel(
     private val container: AppContainer,
-    private val appContext: Context
+    private val appContext: Context,
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FocusUiState())
@@ -86,6 +100,7 @@ class FocusViewModel(
                 }
             } finally {
                 timerStartPending = false
+                _uiState.update { it.copy(isReady = true) }
             }
         }
         viewModelScope.launch {
@@ -124,6 +139,43 @@ class FocusViewModel(
                 _uiState.update { it.copy(isAmbientPlaying = playing) }
             }
         }
+        viewModelScope.launch {
+            container.focusContextRepository.activeRoutines.collect { routines ->
+                _uiState.update { state ->
+                    state.copy(
+                        routines = routines,
+                        selectedCategoryId = state.selectedCategoryId?.takeIf { id ->
+                            state.categories.any { it.id == id }
+                        }
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            container.focusContextRepository.activeCategories.collect { categories ->
+                _uiState.update { state ->
+                    val stillValid = state.selectedCategoryId == null ||
+                        categories.any { it.id == state.selectedCategoryId }
+                    state.copy(
+                        categories = categories,
+                        selectedCategoryId = if (stillValid) state.selectedCategoryId else null
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Consumes a one-shot routine start request passed by navigation. The SavedStateHandle keys
+     * are cleared immediately so rotation or process recreation cannot start a second timer.
+     */
+    fun consumeRoutineAutoStart() {
+        val routineId = savedStateHandle.get<String>("routineId").orEmpty()
+        if (routineId.isBlank() || !_uiState.value.isReady) return
+        // Clear both keys before starting so rotation or process recreation cannot repeat it.
+        savedStateHandle["routineId"] = ""
+        savedStateHandle["requestId"] = ""
+        startRoutine(routineId)
     }
 
     fun selectSessionType(type: SessionType) {
@@ -216,9 +268,82 @@ class FocusViewModel(
         }
     }
 
+    fun selectCategory(categoryId: String?) {
+        val current = _uiState.value
+        if (current.activeTimer != null) return
+        if (current.activeChain != null && !current.activeChain.isCompleted) return
+        if (categoryId != null && current.categories.none { it.id == categoryId }) return
+        _uiState.update { it.copy(selectedCategoryId = categoryId) }
+    }
+
+    /**
+     * One-action routine start. The routine is only a template: its configuration and labels are
+     * copied into the chain/timer snapshots so later edits or deletion cannot rewrite this session.
+     */
+    fun startRoutine(routineId: String) {
+        if (timerStartPending || _uiState.value.activeTimer != null) return
+        val current = _uiState.value
+        if (current.activeChain != null && !current.activeChain.isCompleted) return
+        launchTimerStart {
+            val routine = container.focusContextRepository.getRoutineOnce(routineId)
+                ?: return@launchTimerStart
+            if (routine.isArchived) return@launchTimerStart
+            val validated = routine.config.validated()
+            val category = routine.defaultCategoryId
+                ?.let { container.focusContextRepository.getCategoryOnce(it) }
+                ?.takeIf { !it.isArchived }
+            val chainId = "chain_${UUID.randomUUID()}"
+            val newChain = ActiveChainState(
+                chainId = chainId,
+                config = validated,
+                currentStepType = SessionType.POMODORO,
+                intentionLabel = current.intentionLabel.trim(),
+                routineId = routine.id,
+                routineNameSnapshot = routine.name,
+                routineSnapshot = routine.snapshotLabel(),
+                categoryId = category?.id,
+                categoryNameSnapshot = category?.name.orEmpty()
+            )
+            _uiState.update {
+                it.copy(
+                    activeChain = newChain,
+                    isChainMode = true,
+                    chainConfig = validated,
+                    selectedCategoryId = category?.id,
+                    ambientPreset = routine.ambientPreset,
+                    completionOutcome = null,
+                    completionErrorMessage = null,
+                    interruptedAfterRebootNotice = false
+                )
+            }
+            container.focusRepository.saveActiveChainState(newChain)
+            container.focusContextRepository.markRoutineUsed(routine.id)
+            container.preferencesDataStore.setAmbientPreferences(
+                preset = routine.ambientPreset,
+                volume = current.ambientVolume,
+                playWithSession = current.ambientPlayWithSession
+            )
+            if (routine.ambientPreset == AmbientSoundPreset.NONE) {
+                container.ambientAudioController.stop()
+            }
+            launchTimerStep(
+                sessionType = SessionType.POMODORO,
+                plannedMinutes = validated.focusMinutes,
+                intentionLabel = newChain.intentionLabel,
+                chainId = chainId,
+                routineId = newChain.routineId,
+                routineNameSnapshot = newChain.routineNameSnapshot,
+                routineSnapshot = newChain.routineSnapshot,
+                categoryId = newChain.categoryId,
+                categoryNameSnapshot = newChain.categoryNameSnapshot
+            )
+        }
+    }
+
     fun startSession() {
         if (timerStartPending || _uiState.value.activeTimer != null) return
         val current = _uiState.value
+        val category = current.selectedCategory
 
         if (current.isChainMode && (current.activeChain == null || current.activeChain.isCompleted)) {
             val validatedCfg = current.chainConfig.validated()
@@ -227,7 +352,9 @@ class FocusViewModel(
                 chainId = chainId,
                 config = validatedCfg,
                 currentStepType = SessionType.POMODORO,
-                intentionLabel = current.intentionLabel.trim()
+                intentionLabel = current.intentionLabel.trim(),
+                categoryId = category?.id,
+                categoryNameSnapshot = category?.name.orEmpty()
             )
             _uiState.update {
                 it.copy(
@@ -243,7 +370,9 @@ class FocusViewModel(
                     sessionType = SessionType.POMODORO,
                     plannedMinutes = validatedCfg.focusMinutes,
                     intentionLabel = newChain.intentionLabel,
-                    chainId = chainId
+                    chainId = chainId,
+                    categoryId = newChain.categoryId,
+                    categoryNameSnapshot = newChain.categoryNameSnapshot
                 )
             }
             return
@@ -258,7 +387,12 @@ class FocusViewModel(
                     sessionType = activeChain.currentStepType,
                     plannedMinutes = activeChain.currentStepPlannedMinutes,
                     intentionLabel = activeChain.intentionLabel,
-                    chainId = activeChain.chainId
+                    chainId = activeChain.chainId,
+                    routineId = activeChain.routineId,
+                    routineNameSnapshot = activeChain.routineNameSnapshot,
+                    routineSnapshot = activeChain.routineSnapshot,
+                    categoryId = activeChain.categoryId,
+                    categoryNameSnapshot = activeChain.categoryNameSnapshot
                 )
             }
             return
@@ -270,7 +404,9 @@ class FocusViewModel(
                 sessionType = current.selectedType,
                 plannedMinutes = plannedMinutes,
                 intentionLabel = current.intentionLabel,
-                chainId = null
+                chainId = null,
+                categoryId = category?.id,
+                categoryNameSnapshot = category?.name.orEmpty()
             )
         }
     }
@@ -301,7 +437,12 @@ class FocusViewModel(
                 sessionType = updated.currentStepType,
                 plannedMinutes = updated.currentStepPlannedMinutes,
                 intentionLabel = updated.intentionLabel,
-                chainId = updated.chainId
+                chainId = updated.chainId,
+                routineId = updated.routineId,
+                routineNameSnapshot = updated.routineNameSnapshot,
+                routineSnapshot = updated.routineSnapshot,
+                categoryId = updated.categoryId,
+                categoryNameSnapshot = updated.categoryNameSnapshot
             )
         }
     }
@@ -317,7 +458,12 @@ class FocusViewModel(
         sessionType: SessionType,
         plannedMinutes: Int,
         intentionLabel: String,
-        chainId: String?
+        chainId: String?,
+        routineId: String? = null,
+        routineNameSnapshot: String = "",
+        routineSnapshot: String = "",
+        categoryId: String? = null,
+        categoryNameSnapshot: String = ""
     ) {
         val nowWall = container.clockProvider.nowWallClockMs()
         val nowElapsed = container.clockProvider.elapsedRealtimeMs()
@@ -330,7 +476,12 @@ class FocusViewModel(
             nowWallClockMs = nowWall,
             nowElapsedMs = nowElapsed,
             bootCount = bootCount,
-            chainId = chainId
+            chainId = chainId,
+            routineId = routineId,
+            routineNameSnapshot = routineNameSnapshot,
+            routineSnapshot = routineSnapshot,
+            categoryId = categoryId,
+            categoryNameSnapshot = categoryNameSnapshot
         )
         _uiState.update {
             it.copy(
@@ -718,8 +869,8 @@ class FocusViewModel(
         private val appContext: Context
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return FocusViewModel(container, appContext) as T
+        override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+            return FocusViewModel(container, appContext, extras.createSavedStateHandle()) as T
         }
     }
 }

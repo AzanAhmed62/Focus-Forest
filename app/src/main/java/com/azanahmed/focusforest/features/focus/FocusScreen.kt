@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,12 +72,17 @@ import com.azanahmed.focusforest.ui.theme.JetBrainsMonoFontFamily
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FocusScreen(
-    viewModel: FocusViewModel
+    viewModel: FocusViewModel,
+    onOpenRoutines: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var showAchievementsDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.isReady) {
+        if (state.isReady) viewModel.consumeRoutineAutoStart()
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -159,10 +165,22 @@ fun FocusScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                Text(
-                    text = "Focus Session",
-                    style = MaterialTheme.typography.headlineLarge
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Focus Session",
+                        style = MaterialTheme.typography.headlineLarge
+                    )
+                    TextButton(
+                        onClick = onOpenRoutines,
+                        modifier = Modifier.testTag("open_routines_button")
+                    ) {
+                        Text("Routines")
+                    }
+                }
                 Text(
                     text = "Protect an intentional block of time and grow your forest.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -219,6 +237,61 @@ fun FocusScreen(
                         onAbortChain = { viewModel.requestAbortChainConfirmation() },
                         onDismissCompleted = { viewModel.dismissCompletedChainSummary() }
                     )
+                }
+            }
+
+            val idleForRoutines = state.activeTimer == null &&
+                (state.activeChain == null || state.activeChain?.isCompleted == true)
+            if (idleForRoutines && state.routines.isNotEmpty()) {
+                item {
+                    BotanicalCard {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Saved Routines", style = MaterialTheme.typography.titleMedium)
+                            TextButton(
+                                onClick = onOpenRoutines,
+                                modifier = Modifier.testTag("manage_routines_button")
+                            ) {
+                                Text("Manage")
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.routines.take(4).forEach { routine ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = routine.name,
+                                            style = MaterialTheme.typography.titleSmall
+                                        )
+                                        Text(
+                                            text = routine.snapshotLabel(),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = { viewModel.startRoutine(routine.id) },
+                                        modifier = Modifier.testTag("start_routine_${routine.id}")
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.PlayArrow,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Start")
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -419,6 +492,20 @@ fun FocusScreen(
                             )
                         }
 
+                        val contextLabel = listOfNotNull(
+                            active?.routineNameSnapshot?.takeIf { it.isNotBlank() },
+                            active?.categoryNameSnapshot?.takeIf { it.isNotBlank() }
+                        ).joinToString(" • ")
+                        if (contextLabel.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = contextLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.testTag("active_session_context_label")
+                            )
+                        }
+
                         Spacer(Modifier.height(18.dp))
 
                         if (active == null) {
@@ -590,6 +677,31 @@ fun FocusScreen(
                                 .testTag("session_intention_input"),
                             shape = RoundedCornerShape(16.dp)
                         )
+
+                        if (state.categories.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
+                            Text("Category (optional)", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(6.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = state.selectedCategoryId == null,
+                                    onClick = { viewModel.selectCategory(null) },
+                                    label = { Text("None") },
+                                    modifier = Modifier.testTag("category_chip_none")
+                                )
+                                state.categories.forEach { category ->
+                                    FilterChip(
+                                        selected = state.selectedCategoryId == category.id,
+                                        onClick = { viewModel.selectCategory(category.id) },
+                                        label = { Text(category.name) },
+                                        modifier = Modifier.testTag("category_chip_${category.id}")
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
