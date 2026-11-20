@@ -3,21 +3,28 @@ package com.azanahmed.focusforest.data.repository
 import com.azanahmed.focusforest.data.local.db.entities.ChallengeEntity
 import com.azanahmed.focusforest.data.local.db.entities.ChallengeProgressEntity
 import com.azanahmed.focusforest.data.local.db.entities.DailyStatsEntity
+import com.azanahmed.focusforest.data.local.db.entities.FocusCategoryEntity
+import com.azanahmed.focusforest.data.local.db.entities.FocusRoutineEntity
 import com.azanahmed.focusforest.data.local.db.entities.FocusSessionEntity
 import com.azanahmed.focusforest.data.local.db.entities.ForestProgressEntity
 import com.azanahmed.focusforest.data.local.db.entities.ForestTreeEntity
 import com.azanahmed.focusforest.data.local.db.entities.ShopItemEntity
 import com.azanahmed.focusforest.data.local.db.entities.UserProfileEntity
 import com.azanahmed.focusforest.domain.engine.ForestGrowthEngine
+import com.azanahmed.focusforest.domain.model.AmbientSoundPreset
 import com.azanahmed.focusforest.domain.model.ChallengeIconType
 import com.azanahmed.focusforest.domain.model.ChallengeItem
 import com.azanahmed.focusforest.domain.model.ChallengeMetricType
 import com.azanahmed.focusforest.domain.model.ChallengePeriod
 import com.azanahmed.focusforest.domain.model.ChallengeStatus
+import com.azanahmed.focusforest.domain.model.ChainConfig
 import com.azanahmed.focusforest.domain.model.DailyStats
+import com.azanahmed.focusforest.domain.model.FocusCategory
+import com.azanahmed.focusforest.domain.model.FocusRoutine
 import com.azanahmed.focusforest.domain.model.FocusSession
 import com.azanahmed.focusforest.domain.model.ForestState
 import com.azanahmed.focusforest.domain.model.ForestTree
+import com.azanahmed.focusforest.domain.model.SessionReflection
 import com.azanahmed.focusforest.domain.model.SessionStatus
 import com.azanahmed.focusforest.domain.model.SessionType
 import com.azanahmed.focusforest.domain.model.ShopCatalogItem
@@ -52,7 +59,14 @@ internal fun FocusSessionEntity.toDomain(): FocusSession = FocusSession(
     xpAwarded = xpAwarded,
     seedsAwarded = seedsAwarded,
     intentionLabel = intentionLabel,
-    rewardGranted = rewardGranted
+    rewardGranted = rewardGranted,
+    routineId = routineId,
+    routineNameSnapshot = routineNameSnapshot,
+    routineSnapshot = routineSnapshot,
+    categoryId = categoryId,
+    categoryNameSnapshot = categoryNameSnapshot,
+    note = note,
+    reflection = runCatching { SessionReflection.valueOf(reflection) }.getOrNull()
 )
 
 internal fun FocusSession.toEntity(): FocusSessionEntity = FocusSessionEntity(
@@ -67,7 +81,75 @@ internal fun FocusSession.toEntity(): FocusSessionEntity = FocusSessionEntity(
     xpAwarded = xpAwarded,
     seedsAwarded = seedsAwarded,
     intentionLabel = intentionLabel,
-    rewardGranted = rewardGranted
+    rewardGranted = rewardGranted,
+    routineId = routineId,
+    routineNameSnapshot = routineNameSnapshot,
+    routineSnapshot = routineSnapshot,
+    categoryId = categoryId,
+    categoryNameSnapshot = categoryNameSnapshot,
+    note = note,
+    reflection = reflection?.name ?: ""
+)
+
+internal fun FocusCategoryEntity.toDomain(): FocusCategory = FocusCategory(
+    id = id,
+    name = name,
+    isArchived = isArchived,
+    sortOrder = sortOrder,
+    isBuiltIn = isBuiltIn,
+    createdAtMs = createdAtMs
+)
+
+internal fun FocusCategory.toEntity(): FocusCategoryEntity = FocusCategoryEntity(
+    id = id,
+    name = name,
+    isArchived = isArchived,
+    sortOrder = sortOrder,
+    isBuiltIn = isBuiltIn,
+    createdAtMs = createdAtMs
+)
+
+internal fun FocusRoutineEntity.toDomain(): FocusRoutine = FocusRoutine(
+    id = id,
+    name = name,
+    description = description,
+    config = ChainConfig(
+        totalFocusSessions = totalFocusSessions,
+        focusMinutes = focusMinutes,
+        shortBreakMinutes = shortBreakMinutes,
+        longBreakMinutes = longBreakMinutes,
+        longBreakFrequency = longBreakFrequency,
+        autoTransition = autoTransition
+    ),
+    ambientPreset = runCatching { AmbientSoundPreset.valueOf(ambientPreset) }
+        .getOrDefault(AmbientSoundPreset.NONE),
+    defaultCategoryId = defaultCategoryId,
+    isPinned = isPinned,
+    sortOrder = sortOrder,
+    isArchived = isArchived,
+    isBuiltIn = isBuiltIn,
+    createdAtMs = createdAtMs,
+    lastUsedAtMs = lastUsedAtMs
+)
+
+internal fun FocusRoutine.toEntity(): FocusRoutineEntity = FocusRoutineEntity(
+    id = id,
+    name = name,
+    description = description,
+    focusMinutes = config.focusMinutes,
+    shortBreakMinutes = config.shortBreakMinutes,
+    longBreakMinutes = config.longBreakMinutes,
+    longBreakFrequency = config.longBreakFrequency,
+    totalFocusSessions = config.totalFocusSessions,
+    autoTransition = config.autoTransition,
+    ambientPreset = ambientPreset.name,
+    defaultCategoryId = defaultCategoryId,
+    isPinned = isPinned,
+    sortOrder = sortOrder,
+    isArchived = isArchived,
+    isBuiltIn = isBuiltIn,
+    createdAtMs = createdAtMs,
+    lastUsedAtMs = lastUsedAtMs
 )
 
 internal fun DailyStatsEntity.toDomain(): DailyStats = DailyStats(

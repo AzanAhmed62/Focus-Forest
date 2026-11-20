@@ -29,12 +29,17 @@ private val Context.focusForestDataStore: DataStore<Preferences> by preferencesD
 
 class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
 
+    companion object {
+        const val MAX_WEEKLY_GOAL_MINUTES = 3360
+    }
+
     constructor(context: Context) : this(context.focusForestDataStore)
 
     private object Keys {
         val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val THEME_PREFERENCE = stringPreferencesKey("theme_preference")
         val DAILY_GOAL_MINUTES = intPreferencesKey("daily_goal_minutes")
+        val WEEKLY_GOAL_MINUTES = intPreferencesKey("weekly_goal_minutes")
         val USAGE_TRACKING_ENABLED = booleanPreferencesKey("usage_tracking_enabled")
         val USAGE_DISCLOSURE_ACCEPTED = booleanPreferencesKey("usage_disclosure_accepted")
         val MONITORED_PACKAGES = stringSetPreferencesKey("monitored_packages")
@@ -64,6 +69,11 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
         val TIMER_BOOT_COUNT = intPreferencesKey("timer_boot_count")
         val TIMER_INTENTION_LABEL = stringPreferencesKey("timer_intention_label")
         val TIMER_CHAIN_ID = stringPreferencesKey("timer_chain_id")
+        val TIMER_ROUTINE_ID = stringPreferencesKey("timer_routine_id")
+        val TIMER_ROUTINE_NAME = stringPreferencesKey("timer_routine_name")
+        val TIMER_ROUTINE_SNAPSHOT = stringPreferencesKey("timer_routine_snapshot")
+        val TIMER_CATEGORY_ID = stringPreferencesKey("timer_category_id")
+        val TIMER_CATEGORY_NAME = stringPreferencesKey("timer_category_name")
 
         // Pomodoro Chain Mode state
         val CHAIN_ID = stringPreferencesKey("chain_id")
@@ -84,6 +94,11 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
         val CHAIN_INTENTION_LABEL = stringPreferencesKey("chain_intention_label")
         val CHAIN_PENDING_STEP_SESSION_ID = stringPreferencesKey("chain_pending_step_session_id")
         val CHAIN_LAST_ADVANCED_SESSION_ID = stringPreferencesKey("chain_last_advanced_session_id")
+        val CHAIN_ROUTINE_ID = stringPreferencesKey("chain_routine_id")
+        val CHAIN_ROUTINE_NAME = stringPreferencesKey("chain_routine_name")
+        val CHAIN_ROUTINE_SNAPSHOT = stringPreferencesKey("chain_routine_snapshot")
+        val CHAIN_CATEGORY_ID = stringPreferencesKey("chain_category_id")
+        val CHAIN_CATEGORY_NAME = stringPreferencesKey("chain_category_name")
 
         // Ambient sound preferences
         val AMBIENT_PRESET = stringPreferencesKey("ambient_preset")
@@ -102,6 +117,16 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
 
     val dailyGoalMinutes: Flow<Int> = dataStore.data.map { prefs ->
         prefs[Keys.DAILY_GOAL_MINUTES] ?: 50
+    }
+
+    /**
+     * Independent weekly target. Before the first explicit write, it falls back to the
+     * previous effective weekly intention (daily × 7) so upgrading users keep their goal.
+     * A value of 0 disables the weekly target.
+     */
+    val weeklyGoalMinutes: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[Keys.WEEKLY_GOAL_MINUTES]?.coerceIn(0, MAX_WEEKLY_GOAL_MINUTES)
+            ?: (((prefs[Keys.DAILY_GOAL_MINUTES] ?: 50) * 7).coerceIn(0, MAX_WEEKLY_GOAL_MINUTES))
     }
 
     val usageTrackingEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
@@ -165,7 +190,12 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
             expectedEndWallClockMs = prefs[Keys.TIMER_EXPECTED_END_WALL_MS] ?: 0L,
             bootCount = prefs[Keys.TIMER_BOOT_COUNT] ?: 0,
             intentionLabel = prefs[Keys.TIMER_INTENTION_LABEL] ?: "",
-            chainId = prefs[Keys.TIMER_CHAIN_ID]
+            chainId = prefs[Keys.TIMER_CHAIN_ID],
+            routineId = prefs[Keys.TIMER_ROUTINE_ID],
+            routineNameSnapshot = prefs[Keys.TIMER_ROUTINE_NAME] ?: "",
+            routineSnapshot = prefs[Keys.TIMER_ROUTINE_SNAPSHOT] ?: "",
+            categoryId = prefs[Keys.TIMER_CATEGORY_ID],
+            categoryNameSnapshot = prefs[Keys.TIMER_CATEGORY_NAME] ?: ""
         )
     }
 
@@ -193,7 +223,12 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
             isCompleted = prefs[Keys.CHAIN_IS_COMPLETED] ?: false,
             intentionLabel = prefs[Keys.CHAIN_INTENTION_LABEL] ?: "",
             pendingStepSessionId = prefs[Keys.CHAIN_PENDING_STEP_SESSION_ID],
-            lastAdvancedSessionId = prefs[Keys.CHAIN_LAST_ADVANCED_SESSION_ID]
+            lastAdvancedSessionId = prefs[Keys.CHAIN_LAST_ADVANCED_SESSION_ID],
+            routineId = prefs[Keys.CHAIN_ROUTINE_ID],
+            routineNameSnapshot = prefs[Keys.CHAIN_ROUTINE_NAME] ?: "",
+            routineSnapshot = prefs[Keys.CHAIN_ROUTINE_SNAPSHOT] ?: "",
+            categoryId = prefs[Keys.CHAIN_CATEGORY_ID],
+            categoryNameSnapshot = prefs[Keys.CHAIN_CATEGORY_NAME] ?: ""
         )
     }
 
@@ -207,6 +242,23 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
 
     suspend fun setDailyGoalMinutes(minutes: Int) {
         dataStore.edit { it[Keys.DAILY_GOAL_MINUTES] = minutes.coerceIn(10, 480) }
+    }
+
+    suspend fun setWeeklyGoalMinutes(minutes: Int) {
+        dataStore.edit { it[Keys.WEEKLY_GOAL_MINUTES] = minutes.coerceIn(0, MAX_WEEKLY_GOAL_MINUTES) }
+    }
+
+    /**
+     * Persists the legacy effective weekly intention once. Subsequent daily-goal edits do not
+     * silently rewrite an already-independent weekly goal.
+     */
+    suspend fun ensureWeeklyGoalInitialized() {
+        dataStore.edit { prefs ->
+            if (prefs[Keys.WEEKLY_GOAL_MINUTES] == null) {
+                val daily = prefs[Keys.DAILY_GOAL_MINUTES] ?: 50
+                prefs[Keys.WEEKLY_GOAL_MINUTES] = (daily * 7).coerceIn(0, MAX_WEEKLY_GOAL_MINUTES)
+            }
+        }
     }
 
     suspend fun setUsageTrackingEnabled(enabled: Boolean) {
@@ -292,6 +344,11 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
             prefs.remove(Keys.TIMER_BOOT_COUNT)
             prefs.remove(Keys.TIMER_INTENTION_LABEL)
             prefs.remove(Keys.TIMER_CHAIN_ID)
+            prefs.remove(Keys.TIMER_ROUTINE_ID)
+            prefs.remove(Keys.TIMER_ROUTINE_NAME)
+            prefs.remove(Keys.TIMER_ROUTINE_SNAPSHOT)
+            prefs.remove(Keys.TIMER_CATEGORY_ID)
+            prefs.remove(Keys.TIMER_CATEGORY_NAME)
         } else {
             prefs[Keys.TIMER_SESSION_ID] = state.sessionId
             prefs[Keys.TIMER_SESSION_TYPE] = state.sessionType.name
@@ -308,6 +365,19 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
             } else {
                 prefs.remove(Keys.TIMER_CHAIN_ID)
             }
+            if (state.routineId != null) {
+                prefs[Keys.TIMER_ROUTINE_ID] = state.routineId
+            } else {
+                prefs.remove(Keys.TIMER_ROUTINE_ID)
+            }
+            prefs[Keys.TIMER_ROUTINE_NAME] = state.routineNameSnapshot
+            prefs[Keys.TIMER_ROUTINE_SNAPSHOT] = state.routineSnapshot
+            if (state.categoryId != null) {
+                prefs[Keys.TIMER_CATEGORY_ID] = state.categoryId
+            } else {
+                prefs.remove(Keys.TIMER_CATEGORY_ID)
+            }
+            prefs[Keys.TIMER_CATEGORY_NAME] = state.categoryNameSnapshot
         }
     }
 
@@ -331,6 +401,11 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
             prefs.remove(Keys.CHAIN_INTENTION_LABEL)
             prefs.remove(Keys.CHAIN_PENDING_STEP_SESSION_ID)
             prefs.remove(Keys.CHAIN_LAST_ADVANCED_SESSION_ID)
+            prefs.remove(Keys.CHAIN_ROUTINE_ID)
+            prefs.remove(Keys.CHAIN_ROUTINE_NAME)
+            prefs.remove(Keys.CHAIN_ROUTINE_SNAPSHOT)
+            prefs.remove(Keys.CHAIN_CATEGORY_ID)
+            prefs.remove(Keys.CHAIN_CATEGORY_NAME)
         } else {
             val cfg = state.config.validated()
             prefs[Keys.CHAIN_ID] = state.chainId
@@ -359,6 +434,19 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
             } else {
                 prefs.remove(Keys.CHAIN_LAST_ADVANCED_SESSION_ID)
             }
+            if (state.routineId != null) {
+                prefs[Keys.CHAIN_ROUTINE_ID] = state.routineId
+            } else {
+                prefs.remove(Keys.CHAIN_ROUTINE_ID)
+            }
+            prefs[Keys.CHAIN_ROUTINE_NAME] = state.routineNameSnapshot
+            prefs[Keys.CHAIN_ROUTINE_SNAPSHOT] = state.routineSnapshot
+            if (state.categoryId != null) {
+                prefs[Keys.CHAIN_CATEGORY_ID] = state.categoryId
+            } else {
+                prefs.remove(Keys.CHAIN_CATEGORY_ID)
+            }
+            prefs[Keys.CHAIN_CATEGORY_NAME] = state.categoryNameSnapshot
         }
     }
 

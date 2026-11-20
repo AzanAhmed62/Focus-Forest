@@ -9,6 +9,7 @@ import com.azanahmed.focusforest.data.local.datastore.UserPreferencesDataStore
 import com.azanahmed.focusforest.data.local.db.FocusForestDatabase
 import com.azanahmed.focusforest.data.repository.ChallengeRepository
 import com.azanahmed.focusforest.data.repository.DataManagementRepository
+import com.azanahmed.focusforest.data.repository.FocusContextRepository
 import com.azanahmed.focusforest.data.repository.FocusRepository
 import com.azanahmed.focusforest.data.repository.RewardAuthority
 import com.azanahmed.focusforest.data.repository.ShopAndForestRepository
@@ -35,6 +36,10 @@ class AppContainer(
 
     val focusRepository: FocusRepository by lazy {
         FocusRepository(database, preferencesDataStore, clockProvider, rewardAuthority)
+    }
+
+    val focusContextRepository: FocusContextRepository by lazy {
+        FocusContextRepository(database, clockProvider)
     }
 
     val challengeRepository: ChallengeRepository by lazy {

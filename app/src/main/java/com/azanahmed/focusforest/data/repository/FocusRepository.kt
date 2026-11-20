@@ -27,6 +27,7 @@ import com.azanahmed.focusforest.domain.model.DailyStats
 import com.azanahmed.focusforest.domain.model.FocusSession
 import com.azanahmed.focusforest.domain.model.ForestThemeSkin
 import com.azanahmed.focusforest.domain.model.PersonalRecords
+import com.azanahmed.focusforest.domain.model.SessionReflection
 import com.azanahmed.focusforest.domain.model.SessionStatus
 import com.azanahmed.focusforest.domain.model.SessionType
 import com.azanahmed.focusforest.domain.model.UsageBaselineStatus
@@ -66,6 +67,10 @@ class FocusRepository(
     private val clockProvider: ClockProvider,
     private val rewardAuthority: RewardAuthority = RewardAuthority(db, clockProvider)
 ) {
+    companion object {
+        const val MAX_NOTE_LENGTH = 1000
+    }
+
     private val userProfileDao = db.userProfileDao()
     private val focusSessionDao = db.focusSessionDao()
     private val dailyStatsDao = db.dailyStatsDao()
@@ -86,6 +91,61 @@ class FocusRepository(
 
     val allDailyStats: Flow<List<DailyStats>> = dailyStatsDao.observeAllDailyStats().map { list ->
         list.map { it.toDomain() }
+    }
+
+    /** Small bounded list for Today; never loads the whole session table. */
+    val recentSessions: Flow<List<FocusSession>> = focusSessionDao.observeRecentSessions(5).map { list ->
+        list.map { it.toDomain() }
+    }
+
+    fun observeFilteredSessions(
+        cutoffDate: String?,
+        categoryId: String?,
+        uncategorized: Boolean,
+        routineId: String?,
+        status: SessionStatus?,
+        query: String,
+        limit: Int = 200
+    ): Flow<List<FocusSession>> = focusSessionDao.observeFilteredSessions(
+        cutoffDate = cutoffDate,
+        categoryId = categoryId,
+        uncategorized = uncategorized,
+        routineId = routineId,
+        status = status?.name,
+        query = query.trim(),
+        limit = limit
+    ).map { list -> list.map { it.toDomain() } }
+
+    fun observeSessionsSince(cutoffDate: LocalDate): Flow<List<FocusSession>> =
+        focusSessionDao.observeSessionsSince(cutoffDate.toString()).map { list ->
+            list.map { it.toDomain() }
+        }
+
+    suspend fun getSessionOnce(id: String): FocusSession? =
+        focusSessionDao.getSessionById(id)?.toDomain()
+
+    /**
+     * Updates only note/reflection on a finished session. Reward, duration, status, and ledger
+     * data are untouched by construction.
+     */
+    suspend fun updateSessionMetadata(
+        sessionId: String,
+        note: String,
+        reflection: SessionReflection?
+    ): Result<Unit> {
+        if (note.length > MAX_NOTE_LENGTH) {
+            return Result.failure(IllegalArgumentException("Notes can be at most $MAX_NOTE_LENGTH characters."))
+        }
+        val updated = focusSessionDao.updateSessionMetadata(
+            id = sessionId,
+            note = note.trim(),
+            reflection = reflection?.name ?: ""
+        )
+        return if (updated > 0) {
+            Result.success(Unit)
+        } else {
+            Result.failure(IllegalStateException("Session not found or still active."))
+        }
     }
 
     val activeTimerState: Flow<ActiveTimerState?> = prefs.activeTimerState
@@ -364,7 +424,12 @@ class FocusRepository(
                 nowWallClockMs = clockProvider.nowWallClockMs(),
                 nowElapsedMs = clockProvider.elapsedRealtimeMs(),
                 bootCount = clockProvider.bootCount(),
-                chainId = chain.chainId
+                chainId = chain.chainId,
+                routineId = chain.routineId,
+                routineNameSnapshot = chain.routineNameSnapshot,
+                routineSnapshot = chain.routineSnapshot,
+                categoryId = chain.categoryId,
+                categoryNameSnapshot = chain.categoryNameSnapshot
             )
             val withPending = chain.copy(
                 pendingStepSessionId = timer.sessionId,

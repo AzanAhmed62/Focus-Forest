@@ -23,7 +23,12 @@ object FocusTimerEngine {
         nowElapsedMs: Long,
         bootCount: Int,
         sessionId: String = UUID.randomUUID().toString(),
-        chainId: String? = null
+        chainId: String? = null,
+        routineId: String? = null,
+        routineNameSnapshot: String = "",
+        routineSnapshot: String = "",
+        categoryId: String? = null,
+        categoryNameSnapshot: String = ""
     ): ActiveTimerState {
         val safeMinutes = plannedMinutes.coerceIn(1, 180)
         val durationMs = safeMinutes * 60_000L
@@ -38,7 +43,12 @@ object FocusTimerEngine {
             expectedEndWallClockMs = nowWallClockMs + durationMs,
             bootCount = bootCount,
             intentionLabel = intentionLabel.trim(),
-            chainId = chainId
+            chainId = chainId,
+            routineId = routineId,
+            routineNameSnapshot = routineNameSnapshot,
+            routineSnapshot = routineSnapshot,
+            categoryId = categoryId,
+            categoryNameSnapshot = categoryNameSnapshot
         )
     }
 
@@ -142,7 +152,12 @@ object FocusTimerEngine {
             xpAwarded = reward.xp,
             seedsAwarded = reward.seeds,
             intentionLabel = state.intentionLabel,
-            rewardGranted = grantsReward
+            rewardGranted = grantsReward,
+            routineId = state.routineId,
+            routineNameSnapshot = state.routineNameSnapshot,
+            routineSnapshot = state.routineSnapshot,
+            categoryId = state.categoryId,
+            categoryNameSnapshot = state.categoryNameSnapshot
         )
     }
 
@@ -166,7 +181,12 @@ object FocusTimerEngine {
             xpAwarded = 0,
             seedsAwarded = 0,
             intentionLabel = state.intentionLabel,
-            rewardGranted = false
+            rewardGranted = false,
+            routineId = state.routineId,
+            routineNameSnapshot = state.routineNameSnapshot,
+            routineSnapshot = state.routineSnapshot,
+            categoryId = state.categoryId,
+            categoryNameSnapshot = state.categoryNameSnapshot
         )
     }
 }

@@ -22,7 +22,12 @@ data class UserProfileEntity(
 
 @Entity(
     tableName = "focus_sessions",
-    indices = [Index(value = ["localDate"]), Index(value = ["status"])]
+    indices = [
+        Index(value = ["localDate"]),
+        Index(value = ["status"]),
+        Index(value = ["routineId"]),
+        Index(value = ["categoryId"])
+    ]
 )
 data class FocusSessionEntity(
     @PrimaryKey val id: String,
@@ -36,7 +41,56 @@ data class FocusSessionEntity(
     val xpAwarded: Int,
     val seedsAwarded: Int,
     val intentionLabel: String,
-    val rewardGranted: Boolean
+    val rewardGranted: Boolean,
+    val routineId: String? = null,
+    @ColumnInfo(defaultValue = "")
+    val routineNameSnapshot: String = "",
+    @ColumnInfo(defaultValue = "")
+    val routineSnapshot: String = "",
+    val categoryId: String? = null,
+    @ColumnInfo(defaultValue = "")
+    val categoryNameSnapshot: String = "",
+    @ColumnInfo(defaultValue = "")
+    val note: String = "",
+    @ColumnInfo(defaultValue = "")
+    val reflection: String = ""
+)
+
+@Entity(
+    tableName = "focus_categories",
+    indices = [Index(value = ["isArchived"])]
+)
+data class FocusCategoryEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val isArchived: Boolean,
+    val sortOrder: Int,
+    val isBuiltIn: Boolean,
+    val createdAtMs: Long
+)
+
+@Entity(
+    tableName = "focus_routines",
+    indices = [Index(value = ["isArchived"]), Index(value = ["isPinned"])]
+)
+data class FocusRoutineEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val description: String,
+    val focusMinutes: Int,
+    val shortBreakMinutes: Int,
+    val longBreakMinutes: Int,
+    val longBreakFrequency: Int,
+    val totalFocusSessions: Int,
+    val autoTransition: Boolean,
+    val ambientPreset: String,
+    val defaultCategoryId: String?,
+    val isPinned: Boolean,
+    val sortOrder: Int,
+    val isArchived: Boolean,
+    val isBuiltIn: Boolean,
+    val createdAtMs: Long,
+    val lastUsedAtMs: Long?
 )
 
 @Entity(tableName = "daily_stats")

@@ -61,6 +61,12 @@ enum class AmbientSoundPreset(
     BROWN_NOISE("Deep Focus Hum", "Smooth low-pass brown noise")
 }
 
+enum class SessionReflection(val label: String) {
+    FOCUSED("Focused"),
+    MIXED("Mixed"),
+    INTERRUPTED("Interrupted")
+}
+
 data class FocusSession(
     val id: String,
     val sessionType: SessionType,
@@ -73,7 +79,84 @@ data class FocusSession(
     val xpAwarded: Int,
     val seedsAwarded: Int,
     val intentionLabel: String = "",
-    val rewardGranted: Boolean = false
+    val rewardGranted: Boolean = false,
+    /** Null for ad-hoc sessions; never a foreign key, so routine deletion cannot erase history. */
+    val routineId: String? = null,
+    val routineNameSnapshot: String = "",
+    val routineSnapshot: String = "",
+    val categoryId: String? = null,
+    val categoryNameSnapshot: String = "",
+    val note: String = "",
+    val reflection: SessionReflection? = null
+)
+
+data class FocusCategory(
+    val id: String,
+    val name: String,
+    val isArchived: Boolean = false,
+    val sortOrder: Int = 0,
+    val isBuiltIn: Boolean = false,
+    val createdAtMs: Long = 0L
+)
+
+data class FocusRoutine(
+    val id: String,
+    val name: String,
+    val description: String = "",
+    val config: ChainConfig = ChainConfig(),
+    val ambientPreset: AmbientSoundPreset = AmbientSoundPreset.NONE,
+    val defaultCategoryId: String? = null,
+    val isPinned: Boolean = false,
+    val sortOrder: Int = 0,
+    val isArchived: Boolean = false,
+    val isBuiltIn: Boolean = false,
+    val createdAtMs: Long = 0L,
+    val lastUsedAtMs: Long? = null
+) {
+    /** Stable, human-readable configuration snapshot stored on completed sessions. */
+    fun snapshotLabel(): String {
+        val rounds = if (config.totalFocusSessions == 1) "1 round" else "${config.totalFocusSessions} rounds"
+        val transition = if (config.autoTransition) "auto" else "manual"
+        return "$rounds · ${config.focusMinutes}m focus · ${config.shortBreakMinutes}m short · " +
+            "${config.longBreakMinutes}m long · every ${config.longBreakFrequency} rounds · $transition"
+    }
+}
+
+data class RoutineValidation(
+    val nameError: String? = null,
+    val descriptionError: String? = null,
+    val focusMinutesError: String? = null,
+    val shortBreakMinutesError: String? = null,
+    val longBreakMinutesError: String? = null,
+    val totalFocusSessionsError: String? = null,
+    val longBreakFrequencyError: String? = null
+) {
+    val isValid: Boolean
+        get() = nameError == null && descriptionError == null && focusMinutesError == null &&
+            shortBreakMinutesError == null && longBreakMinutesError == null &&
+            totalFocusSessionsError == null && longBreakFrequencyError == null
+
+    fun firstError(): String? = nameError ?: descriptionError ?: focusMinutesError
+        ?: shortBreakMinutesError ?: longBreakMinutesError ?: totalFocusSessionsError
+        ?: longBreakFrequencyError
+}
+
+fun FocusRoutine.validation(): RoutineValidation = RoutineValidation(
+    nameError = when {
+        name.isBlank() -> "Give the routine a name."
+        name.trim().length > 40 -> "Routine names can be at most 40 characters."
+        else -> null
+    },
+    descriptionError = if (description.trim().length > 200) {
+        "Descriptions can be at most 200 characters."
+    } else null,
+    focusMinutesError = if (config.focusMinutes !in 5..180) "Focus must be 5–180 minutes." else null,
+    shortBreakMinutesError = if (config.shortBreakMinutes !in 1..30) "Short breaks must be 1–30 minutes." else null,
+    longBreakMinutesError = if (config.longBreakMinutes !in 5..45) "Long breaks must be 5–45 minutes." else null,
+    totalFocusSessionsError = if (config.totalFocusSessions !in 1..8) "Rounds must be 1–8." else null,
+    longBreakFrequencyError = if (config.longBreakFrequency !in 2..8) {
+        "Long-break cadence must be 2–8 rounds."
+    } else null
 )
 
 data class ActiveTimerState(
@@ -87,7 +170,12 @@ data class ActiveTimerState(
     val expectedEndWallClockMs: Long,
     val bootCount: Int,
     val intentionLabel: String = "",
-    val chainId: String? = null
+    val chainId: String? = null,
+    val routineId: String? = null,
+    val routineNameSnapshot: String = "",
+    val routineSnapshot: String = "",
+    val categoryId: String? = null,
+    val categoryNameSnapshot: String = ""
 ) {
     val progressFraction: Float
         get() = if (plannedDurationMs <= 0L) 0f
@@ -129,7 +217,13 @@ data class ActiveChainState(
      */
     val pendingStepSessionId: String? = null,
     /** Completed session id already applied to this chain, making advancement idempotent. */
-    val lastAdvancedSessionId: String? = null
+    val lastAdvancedSessionId: String? = null,
+    /** Routine/category snapshots copied at start so later edits cannot rewrite the chain. */
+    val routineId: String? = null,
+    val routineNameSnapshot: String = "",
+    val routineSnapshot: String = "",
+    val categoryId: String? = null,
+    val categoryNameSnapshot: String = ""
 ) {
     val upcomingStepType: SessionType?
         get() {
