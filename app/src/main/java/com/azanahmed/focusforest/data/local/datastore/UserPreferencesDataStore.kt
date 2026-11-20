@@ -267,6 +267,18 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
         }
     }
 
+    /**
+     * Clears the active timer only when it still belongs to [sessionId]. Completion and abort
+     * paths must use this so a late duplicate worker cannot delete a newer chain step.
+     */
+    suspend fun clearActiveTimerIfSession(sessionId: String) {
+        dataStore.edit { prefs ->
+            if (prefs[Keys.TIMER_SESSION_ID] == sessionId) {
+                writeTimer(prefs, null)
+            }
+        }
+    }
+
     private fun writeTimer(prefs: MutablePreferences, state: ActiveTimerState?) {
         if (state == null) {
             prefs.remove(Keys.TIMER_SESSION_ID)

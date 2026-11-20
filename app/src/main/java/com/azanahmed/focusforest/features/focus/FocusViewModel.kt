@@ -68,18 +68,24 @@ class FocusViewModel(
     private var tickerJob: Job? = null
     private var completingSessionId: String? = null
     private var isAppForeground: Boolean = false
+    private var timerStartPending: Boolean = false
 
     init {
+        timerStartPending = true
         viewModelScope.launch {
-            val savedTimer = container.focusRepository.activeTimerState.first()
-            val savedChain = container.focusRepository.activeChainState.first()
-            if (savedChain != null && !savedChain.isCompleted) {
-                _uiState.update { it.copy(activeChain = savedChain, isChainMode = true) }
-            }
-            if (savedTimer != null) {
-                recoverPersistedTimer(savedTimer)
-            } else {
-                recoverChainContinuation()
+            try {
+                val savedTimer = container.focusRepository.activeTimerState.first()
+                val savedChain = container.focusRepository.activeChainState.first()
+                if (savedChain != null && !savedChain.isCompleted) {
+                    _uiState.update { it.copy(activeChain = savedChain, isChainMode = true) }
+                }
+                if (savedTimer != null) {
+                    recoverPersistedTimer(savedTimer)
+                } else {
+                    recoverChainContinuation()
+                }
+            } finally {
+                timerStartPending = false
             }
         }
         viewModelScope.launch {
@@ -211,7 +217,7 @@ class FocusViewModel(
     }
 
     fun startSession() {
-        if (_uiState.value.activeTimer != null) return
+        if (timerStartPending || _uiState.value.activeTimer != null) return
         val current = _uiState.value
 
         if (current.isChainMode && (current.activeChain == null || current.activeChain.isCompleted)) {
@@ -231,7 +237,7 @@ class FocusViewModel(
                     interruptedAfterRebootNotice = false
                 )
             }
-            viewModelScope.launch {
+            launchTimerStart {
                 container.focusRepository.saveActiveChainState(newChain)
                 launchTimerStep(
                     sessionType = SessionType.POMODORO,
@@ -245,7 +251,7 @@ class FocusViewModel(
 
         val activeChain = current.activeChain
         if (activeChain != null && !activeChain.isCompleted) {
-            viewModelScope.launch {
+            launchTimerStart {
                 val clearedWait = activeChain.copy(waitingForUserNextStep = false)
                 container.focusRepository.saveActiveChainState(clearedWait)
                 launchTimerStep(
@@ -259,7 +265,7 @@ class FocusViewModel(
         }
 
         val plannedMinutes = current.plannedMinutesForSelection
-        viewModelScope.launch {
+        launchTimerStart {
             launchTimerStep(
                 sessionType = current.selectedType,
                 plannedMinutes = plannedMinutes,
@@ -269,10 +275,26 @@ class FocusViewModel(
         }
     }
 
+    /**
+     * Sets the pending flag synchronously before launching, then clears it once the timer state
+     * has been persisted. This closes the double-tap window where two coroutines could both
+     * observe an empty `activeTimer` and create two sessions.
+     */
+    private fun launchTimerStart(block: suspend () -> Unit) {
+        timerStartPending = true
+        viewModelScope.launch {
+            try {
+                block()
+            } finally {
+                timerStartPending = false
+            }
+        }
+    }
+
     fun startNextChainStep() {
         val activeChain = _uiState.value.activeChain ?: return
-        if (activeChain.isCompleted || _uiState.value.activeTimer != null) return
-        viewModelScope.launch {
+        if (activeChain.isCompleted || timerStartPending || _uiState.value.activeTimer != null) return
+        launchTimerStart {
             val updated = activeChain.copy(waitingForUserNextStep = false)
             container.focusRepository.saveActiveChainState(updated)
             launchTimerStep(
@@ -451,6 +473,7 @@ class FocusViewModel(
     }
 
     fun onForegroundSync() {
+        if (timerStartPending) return
         viewModelScope.launch {
             val savedTimer = container.focusRepository.activeTimerState.first()
             val savedChain = container.focusRepository.activeChainState.first()
@@ -488,6 +511,7 @@ class FocusViewModel(
 
     fun retryPendingCompletion() {
         val pending = _uiState.value.pendingRetryState ?: return
+        if (timerStartPending || _uiState.value.activeTimer != null || completingSessionId != null) return
         viewModelScope.launch {
             completeSession(pending)
         }
@@ -535,7 +559,7 @@ class FocusViewModel(
                     container.ambientAudioController.stop()
                 }
                 container.focusRepository.recordAbortedSession(eval.state, SessionStatus.INTERRUPTED)
-                container.focusRepository.markChainWaitingAfterInterruption(eval.state.chainId)
+                container.focusRepository.markChainWaitingAfterInterruption(eval.state.chainId, eval.state.sessionId)
                 _uiState.update {
                     it.copy(
                         activeTimer = null,
@@ -561,14 +585,9 @@ class FocusViewModel(
         }
         val next = recovered.nextTimer ?: return
         _uiState.update { it.copy(activeTimer = next) }
-        SessionCompletionWorker.schedule(
-            context = appContext,
-            delayMs = next.plannedDurationMs,
-            sessionId = next.sessionId,
-            sessionName = next.sessionType.displayName,
-            plannedMinutes = (next.plannedDurationMs / 60_000L).toInt().coerceAtLeast(1)
-        )
-        startTickerLoop()
+        // The recovered timer may already have been running before process death; evaluate it
+        // instead of granting a fresh full block.
+        recoverPersistedTimer(next)
     }
 
     private fun startTickerLoop() {
@@ -593,7 +612,7 @@ class FocusViewModel(
                     }
                     is TimerRecoveryResult.InterruptedAfterReboot -> {
                         container.focusRepository.recordAbortedSession(eval.state, SessionStatus.INTERRUPTED)
-                        container.focusRepository.markChainWaitingAfterInterruption(eval.state.chainId)
+                        container.focusRepository.markChainWaitingAfterInterruption(eval.state.chainId, eval.state.sessionId)
                         _uiState.update {
                             it.copy(
                                 activeTimer = null,

@@ -18,6 +18,7 @@ import com.azanahmed.focusforest.domain.model.AppUsageSummary
 import com.azanahmed.focusforest.domain.model.LaunchableAppInfo
 import com.azanahmed.focusforest.domain.model.UsagePermissionStatus
 import com.azanahmed.focusforest.domain.model.UsageQueryResult
+import kotlinx.coroutines.CancellationException
 import java.time.LocalDate
 
 class AndroidUsageStatsGateway(
@@ -153,6 +154,8 @@ class AndroidUsageStatsGateway(
                 dayStartMs,
                 dayEndMs
             )
+        } catch (c: CancellationException) {
+            throw c
         } catch (t: Throwable) {
             return UsageQueryResult.Failure(
                 message = "Unable to read Android usage statistics: ${t.message ?: "unexpected error"}",

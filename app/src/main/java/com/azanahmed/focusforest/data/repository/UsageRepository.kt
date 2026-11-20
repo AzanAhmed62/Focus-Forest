@@ -13,6 +13,7 @@ import com.azanahmed.focusforest.domain.model.UsageDashboardState
 import com.azanahmed.focusforest.domain.model.UsagePermissionStatus
 import com.azanahmed.focusforest.domain.model.UsageQueryResult
 import com.azanahmed.focusforest.platform.usage.UsageStatsGateway
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,6 +78,12 @@ class UsageRepository(
             _dashboardState.value = result
             deferred.complete(result)
             result
+        } catch (c: CancellationException) {
+            // Cancellation is control flow, not a usage failure. Propagate it to the caller and
+            // cancel joined waiters so they do not receive a phantom fallback dashboard.
+            _dashboardState.value = _dashboardState.value.copy(isRefreshing = false)
+            deferred.cancel(c)
+            throw c
         } catch (t: Throwable) {
             val fallback = _dashboardState.value.copy(
                 isRefreshing = false,

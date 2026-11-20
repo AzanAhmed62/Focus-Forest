@@ -17,6 +17,8 @@ data class LevelProgressInfo(
 
 object XpLevelEngine {
 
+    private const val MAX_LEVEL = 10_000
+
     /**
      * Computes direct session rewards.
      * Restorative break sessions (SHORT_BREAK, LONG_BREAK) intentionally grant 0 XP and 0 seeds
@@ -52,20 +54,21 @@ object XpLevelEngine {
      * Level 3: 350 XP
      * Level 4: 600 XP
      * Level 5: 900 XP
+     *
+     * Uses Long arithmetic and a hard level ceiling so extreme (or corrupted) lifetime XP
+     * cannot overflow Int and trap level calculation.
      */
     fun xpRequiredForLevel(level: Int): Int {
         if (level <= 1) return 0
-        var total = 0
-        for (l in 1 until level) {
-            total += 100 + l * 50
-        }
-        return total
+        val steps = level.coerceAtMost(MAX_LEVEL) - 1
+        val total = 100L * steps + 25L * steps * (steps + 1)
+        return total.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }
 
     fun levelForXp(lifetimeXp: Int): Int {
         val safeXp = lifetimeXp.coerceAtLeast(0)
         var level = 1
-        while (safeXp >= xpRequiredForLevel(level + 1)) {
+        while (level < MAX_LEVEL && safeXp.toLong() >= xpRequiredForLevel(level + 1).toLong()) {
             level++
         }
         return level

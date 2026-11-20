@@ -275,7 +275,14 @@ class FocusRepository(
 
         val timer = prefs.activeTimerState.first()
         if (timer != null) {
-            if (timer.chainId == chain.chainId && chain.pendingStepSessionId != timer.sessionId) {
+            if (timer.chainId != chain.chainId) {
+                // Never attach an unrelated standalone or other-chain timer to this chain.
+                // Keep the timer untouched and park the chain for an explicit user decision.
+                val paused = ChainStateMachine.pauseForUserAfterInterruption(chain)
+                if (paused != chain) prefs.saveActiveChainState(paused)
+                return@withLock ChainContinuation(paused, null)
+            }
+            if (chain.pendingStepSessionId != timer.sessionId) {
                 val reconciled = chain.copy(pendingStepSessionId = timer.sessionId)
                 prefs.saveActiveChainState(reconciled)
                 return@withLock ChainContinuation(reconciled, timer)
@@ -328,11 +335,15 @@ class FocusRepository(
     }
 
     /** Keeps the chain alive but paused for an explicit user continuation after an interruption. */
-    suspend fun markChainWaitingAfterInterruption(chainId: String?) {
+    suspend fun markChainWaitingAfterInterruption(chainId: String?, interruptedSessionId: String? = null) {
         if (chainId == null) return
         chainMutex.withLock {
             val chain = prefs.activeChainState.first() ?: return@withLock
             if (chain.chainId != chainId || chain.isCompleted) return@withLock
+            if (interruptedSessionId != null && chain.pendingStepSessionId != interruptedSessionId) {
+                // A newer chain step already replaced the interrupted one; never clear it.
+                return@withLock
+            }
             prefs.saveChainAndTimer(ChainStateMachine.pauseForUserAfterInterruption(chain), null)
         }
     }
@@ -402,7 +413,7 @@ class FocusRepository(
                 focusSessionDao.upsertSession(aborted.toEntity())
             }
         }
-        prefs.saveActiveTimerState(null)
+        prefs.clearActiveTimerIfSession(activeState.sessionId)
         return aborted
     }
 
@@ -631,7 +642,7 @@ class FocusRepository(
             )
         }
 
-        prefs.saveActiveTimerState(null)
+        prefs.clearActiveTimerIfSession(activeState.sessionId)
         return outcome
     }
 }

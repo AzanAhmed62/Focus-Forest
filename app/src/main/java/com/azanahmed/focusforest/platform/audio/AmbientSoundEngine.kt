@@ -11,6 +11,7 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import androidx.core.content.ContextCompat
 import com.azanahmed.focusforest.domain.model.AmbientSoundPreset
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -325,8 +326,15 @@ class AndroidAmbientAudioController(
                     break
                 }
             }
+        } catch (c: CancellationException) {
+            // Playback was stopped/updated while writing. Release below, never report a bogus
+            // audio failure, and rethrow so structured concurrency sees the cancellation.
+            if (currentCoroutineContext().isActive) {
+                markUnavailable(generation)
+            }
+            throw c
         } catch (_: Throwable) {
-            // Cancellation or audio-route interruption: release below, report only if still current.
+            // Audio-route interruption: release below, report only if still current.
             if (currentCoroutineContext().isActive) {
                 markUnavailable(generation)
             }

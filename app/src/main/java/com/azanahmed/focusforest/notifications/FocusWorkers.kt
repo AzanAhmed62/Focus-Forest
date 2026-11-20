@@ -18,6 +18,7 @@ import com.azanahmed.focusforest.domain.engine.FocusTimerEngine
 import com.azanahmed.focusforest.domain.engine.TimerRecoveryResult
 import com.azanahmed.focusforest.domain.model.NotificationPreferences
 import com.azanahmed.focusforest.domain.model.SessionStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import java.time.Duration
 import java.time.Instant
@@ -46,24 +47,48 @@ class SessionCompletionCoordinator(
     suspend fun execute(
         expectedSessionId: String?,
         fallbackSessionName: String,
-        fallbackMinutes: Int
+        fallbackMinutes: Int,
+        allowRecovery: Boolean = true
     ): WorkerCompletionAction {
         val saved = focusRepository.activeTimerState.first()
         if (saved == null) {
+            if (!allowRecovery) return WorkerCompletionAction.IgnoredStaleOrMissing
             // The worker may be the only component alive after process death. Reconcile a chain
             // whose previous step completed but whose next timer was never created.
             val recovered = focusRepository.recoverChainState()
-            val next = recovered.nextTimer
-            return if (next != null) {
-                scheduleReschedule(
-                    next.plannedDurationMs,
-                    next.sessionId,
-                    next.sessionType.displayName,
-                    (next.plannedDurationMs / 60_000L).toInt().coerceAtLeast(1)
-                )
-                WorkerCompletionAction.Continued(next.sessionId)
-            } else {
-                WorkerCompletionAction.IgnoredStaleOrMissing
+            val next = recovered.nextTimer ?: return WorkerCompletionAction.IgnoredStaleOrMissing
+            val nowWall = clockProvider.nowWallClockMs()
+            val nowElapsed = clockProvider.elapsedRealtimeMs()
+            val bootCount = clockProvider.bootCount()
+            val plannedMinutes = (next.plannedDurationMs / 60_000L).toInt().coerceAtLeast(1)
+            return when (val eval = FocusTimerEngine.evaluateState(next, nowWall, nowElapsed, bootCount)) {
+                is TimerRecoveryResult.Active -> {
+                    scheduleReschedule(
+                        eval.state.remainingMs.coerceAtLeast(1_000L),
+                        eval.state.sessionId,
+                        eval.state.sessionType.displayName,
+                        plannedMinutes
+                    )
+                    WorkerCompletionAction.Rescheduled(eval.state.remainingMs)
+                }
+                is TimerRecoveryResult.InterruptedAfterReboot -> {
+                    focusRepository.recordAbortedSession(eval.state, SessionStatus.INTERRUPTED)
+                    focusRepository.markChainWaitingAfterInterruption(
+                        eval.state.chainId,
+                        eval.state.sessionId
+                    )
+                    WorkerCompletionAction.Interrupted(eval.state.sessionId)
+                }
+                is TimerRecoveryResult.ReadyToComplete -> {
+                    // The recovered timer is already persisted, so a single bounded re-entry
+                    // handles completion without allowing an unbounded recovery loop.
+                    execute(
+                        expectedSessionId = eval.state.sessionId,
+                        fallbackSessionName = eval.state.sessionType.displayName,
+                        fallbackMinutes = plannedMinutes,
+                        allowRecovery = false
+                    )
+                }
             }
         }
         if (saved.status != SessionStatus.RUNNING) {
@@ -91,7 +116,7 @@ class SessionCompletionCoordinator(
             }
             is TimerRecoveryResult.InterruptedAfterReboot -> {
                 focusRepository.recordAbortedSession(eval.state, SessionStatus.INTERRUPTED)
-                focusRepository.markChainWaitingAfterInterruption(eval.state.chainId)
+                focusRepository.markChainWaitingAfterInterruption(eval.state.chainId, eval.state.sessionId)
                 WorkerCompletionAction.Interrupted(eval.state.sessionId)
             }
             is TimerRecoveryResult.ReadyToComplete -> {
@@ -167,6 +192,10 @@ class SessionCompletionWorker(
                 fallbackMinutes = minutes
             )
             Result.success()
+        } catch (c: CancellationException) {
+            // WorkManager cancellation is not a transient storage failure. Rethrow so the
+            // coroutine is cancelled cleanly instead of being converted into a retry.
+            throw c
         } catch (_: Throwable) {
             // Transient storage failure: let WorkManager retry so a chain step is never lost.
             if (runAttemptCount < 3) Result.retry() else Result.failure()
