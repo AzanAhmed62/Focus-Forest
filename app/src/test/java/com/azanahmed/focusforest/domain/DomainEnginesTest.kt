@@ -232,6 +232,106 @@ class DomainEnginesTest {
     }
 
     @Test
+    fun `category and routine insights stay inside the supplied window and keep snapshot names`() {
+        val zone = ZoneId.of("UTC")
+        val today = LocalDate.of(2026, 11, 16)
+        fun session(
+            id: String,
+            type: SessionType,
+            minutes: Int,
+            status: SessionStatus = SessionStatus.COMPLETED,
+            categoryId: String? = null,
+            categoryName: String = "",
+            routineId: String? = null,
+            routineName: String = ""
+        ) = FocusSession(
+            id = id,
+            sessionType = type,
+            plannedMinutes = minutes,
+            completedMinutes = minutes,
+            status = status,
+            startedAtWallMs = 1_763_300_000_000L,
+            endedAtWallMs = 1_763_300_000_000L + minutes * 60_000L,
+            localDate = "2026-11-16",
+            xpAwarded = if (status == SessionStatus.COMPLETED) 50 else 0,
+            seedsAwarded = if (status == SessionStatus.COMPLETED) 2 else 0,
+            categoryId = categoryId,
+            categoryNameSnapshot = categoryName,
+            routineId = routineId,
+            routineNameSnapshot = routineName
+        )
+
+        // Newest first, as the repository returns them. The second Study row carries the newer
+        // snapshot name; ids are never resolved against the current categories table.
+        val newestStudy = session(
+            "s2", SessionType.DEEP_WORK, 50,
+            categoryId = "cat_study", categoryName = "Study Renamed",
+            routineId = "routine_study", routineName = "Study"
+        )
+        val olderStudy = session(
+            "s1", SessionType.POMODORO, 25,
+            categoryId = "cat_study", categoryName = "Study",
+            routineId = "routine_study", routineName = "Study"
+        )
+        val coding = session(
+            "s3", SessionType.CUSTOM, 35,
+            categoryId = "cat_coding", categoryName = "Coding",
+            routineId = "routine_deep_work", routineName = "Deep Work"
+        )
+        val unlabelled = session("s4", SessionType.POMODORO, 25)
+        val deletedLabel = session(
+            "s7", SessionType.POMODORO, 15,
+            categoryId = "cat_deleted", categoryName = "Old Study",
+            routineId = "routine_deleted", routineName = "Old Routine"
+        )
+        val aborted = session(
+            "s5", SessionType.POMODORO, 25, status = SessionStatus.ABORTED,
+            categoryId = "cat_study", categoryName = "Study"
+        )
+        val breakSession = session(
+            "s6", SessionType.SHORT_BREAK, 5,
+            categoryId = "cat_study", categoryName = "Study",
+            routineId = "routine_study", routineName = "Study"
+        )
+        val window = listOf(newestStudy, olderStudy, coding, unlabelled, deletedLabel)
+
+        val insights = InsightsAnalyticsEngine.computeAdvancedInsights(
+            sessions = window + listOf(aborted, breakSession),
+            dailyStats = emptyList(),
+            today = today,
+            zoneId = zone,
+            sessionsForBreakdown = window
+        )
+
+        assertEquals(5, insights.completedFocusSampleCount)
+        assertEquals(30, insights.averageCompletedFocusMinutes)
+        assertEquals(4, insights.categorizedSessionCount)
+        assertEquals(4, insights.routineSessionCount)
+
+        assertEquals(listOf("Study Renamed", "Coding", "Old Study"), insights.categoryBreakdown.map { it.name })
+        assertEquals(listOf(2, 1, 1), insights.categoryBreakdown.map { it.count })
+        assertEquals(listOf(75, 35, 15), insights.categoryBreakdown.map { it.minutes })
+        assertEquals(0.6f, insights.categoryBreakdown[0].shareFraction, 0.0001f)
+        assertEquals("cat_deleted", insights.categoryBreakdown[2].id)
+
+        assertEquals(listOf("Study", "Deep Work", "Old Routine"), insights.routineBreakdown.map { it.name })
+        assertEquals(listOf(75, 35, 15), insights.routineBreakdown.map { it.minutes })
+
+        // A narrower window recomputes averages and labels instead of reusing all-time numbers.
+        val narrow = InsightsAnalyticsEngine.computeAdvancedInsights(
+            sessions = window + listOf(aborted, breakSession),
+            dailyStats = emptyList(),
+            today = today,
+            zoneId = zone,
+            sessionsForBreakdown = listOf(coding)
+        )
+        assertEquals(1, narrow.completedFocusSampleCount)
+        assertEquals(35, narrow.averageCompletedFocusMinutes)
+        assertEquals(listOf("Coding"), narrow.categoryBreakdown.map { it.name })
+        assertEquals(listOf("Deep Work"), narrow.routineBreakdown.map { it.name })
+    }
+
+    @Test
     fun `chain config clamps values to safe ranges`() {
         val clamped = ChainConfig(
             focusMinutes = 2,

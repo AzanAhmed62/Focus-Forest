@@ -65,6 +65,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.azanahmed.focusforest.domain.engine.FocusContextBreakdown
 import com.azanahmed.focusforest.domain.model.AppUsageSummary
 import com.azanahmed.focusforest.domain.model.FocusSession
 import com.azanahmed.focusforest.domain.model.SessionStatus
@@ -415,6 +416,57 @@ private fun FocusInsightsTab(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        // Category and routine insights, scoped to the selected date window
+        item {
+            BotanicalCard {
+                Text("Category & Routine Insights", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                val sample = state.advancedInsights.completedFocusSampleCount
+                Text(
+                    text = if (sample == 0) {
+                        "No completed focus sessions in this range yet."
+                    } else {
+                        "Based on $sample completed focus session${if (sample == 1) "" else "s"} " +
+                            "in this range. Average block: " +
+                            "${state.advancedInsights.averageCompletedFocusMinutes} min."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("insights_sample_size")
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Categories • ${state.advancedInsights.categorizedSessionCount} labelled",
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Spacer(Modifier.height(6.dp))
+                if (state.advancedInsights.categoryBreakdown.isEmpty()) {
+                    Text(
+                        "No category labels recorded in this range.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    ContextBreakdownRows(state.advancedInsights.categoryBreakdown)
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Routines • ${state.advancedInsights.routineSessionCount} labelled",
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Spacer(Modifier.height(6.dp))
+                if (state.advancedInsights.routineBreakdown.isEmpty()) {
+                    Text(
+                        "No routine labels recorded in this range.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    ContextBreakdownRows(state.advancedInsights.routineBreakdown)
                 }
             }
         }
@@ -805,6 +857,36 @@ private fun AppIconImage(drawable: Drawable?, label: String) {
                     tint = MaterialTheme.colorScheme.onSecondaryContainer
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ContextBreakdownRows(items: List<FocusContextBreakdown>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items.forEach { item ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = item.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "${item.count} · ${item.minutes}m",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            LinearProgressIndicator(
+                progress = { item.shareFraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+            )
         }
     }
 }

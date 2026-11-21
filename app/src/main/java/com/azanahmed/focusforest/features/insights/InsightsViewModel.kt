@@ -100,7 +100,8 @@ class InsightsViewModel(
             sessions = sessions,
             dailyStats = dailyStats,
             today = today,
-            zoneId = zoneId
+            zoneId = zoneId,
+            sessionsForBreakdown = filteredSessions
         )
 
         val calendarCells = InsightsAnalyticsEngine.buildCalendarMonth(

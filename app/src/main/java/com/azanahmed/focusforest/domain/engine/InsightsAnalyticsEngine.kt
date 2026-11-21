@@ -8,6 +8,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 enum class TimeOfDayBucket(val label: String, val rangeLabel: String) {
     MORNING("Morning", "5:00 – 11:59"),
@@ -23,6 +24,18 @@ data class SessionTypeBreakdown(
     val shareFraction: Float
 )
 
+/**
+ * Aggregated category or routine insight. [id] is the stable label id when it exists, but
+ * [name] comes from the latest session snapshot so rename/delete never rewrites history.
+ */
+data class FocusContextBreakdown(
+    val id: String,
+    val name: String,
+    val count: Int,
+    val minutes: Int,
+    val shareFraction: Float
+)
+
 data class AdvancedFocusInsights(
     val monthlyConsistencyPercent: Int = 0,
     val monthlyActiveOrRestDays: Int = 0,
@@ -31,7 +44,13 @@ data class AdvancedFocusInsights(
     val bestTimeOfDay: TimeOfDayBucket? = null,
     val timeOfDayMinutes: Map<TimeOfDayBucket, Int> = emptyMap(),
     val sessionTypeBreakdown: List<SessionTypeBreakdown> = emptyList(),
-    val totalDaysTracked: Int = 0
+    val totalDaysTracked: Int = 0,
+    val categoryBreakdown: List<FocusContextBreakdown> = emptyList(),
+    val routineBreakdown: List<FocusContextBreakdown> = emptyList(),
+    val averageCompletedFocusMinutes: Int = 0,
+    val completedFocusSampleCount: Int = 0,
+    val categorizedSessionCount: Int = 0,
+    val routineSessionCount: Int = 0
 )
 
 enum class CalendarDayKind {
@@ -57,7 +76,8 @@ object InsightsAnalyticsEngine {
         sessions: List<FocusSession>,
         dailyStats: List<DailyStats>,
         today: LocalDate,
-        zoneId: ZoneId
+        zoneId: ZoneId,
+        sessionsForBreakdown: List<FocusSession> = sessions
     ): AdvancedFocusInsights {
         val completedFocus = sessions.filter { it.status == SessionStatus.COMPLETED && !it.sessionType.isBreak }
         val completedAll = sessions.filter { it.status == SessionStatus.COMPLETED }
@@ -108,6 +128,26 @@ object InsightsAnalyticsEngine {
             }
         }
 
+        val windowFocus = sessionsForBreakdown.filter {
+            it.status == SessionStatus.COMPLETED && !it.sessionType.isBreak
+        }
+        val averageCompletedMinutes = if (windowFocus.isEmpty()) {
+            0
+        } else {
+            (windowFocus.sumOf { it.completedMinutes }.toFloat() / windowFocus.size.toFloat())
+                .roundToInt()
+        }
+        val categoryBreakdown = buildContextBreakdown(
+            sessions = windowFocus,
+            idSelector = { it.categoryId },
+            nameSelector = { it.categoryNameSnapshot }
+        )
+        val routineBreakdown = buildContextBreakdown(
+            sessions = windowFocus,
+            idSelector = { it.routineId },
+            nameSelector = { it.routineNameSnapshot }
+        )
+
         return AdvancedFocusInsights(
             monthlyConsistencyPercent = monthlyConsistencyPercent,
             monthlyActiveOrRestDays = last30Consistent,
@@ -116,7 +156,59 @@ object InsightsAnalyticsEngine {
             bestTimeOfDay = bestTimeOfDay,
             timeOfDayMinutes = bucketMinutes,
             sessionTypeBreakdown = breakdown,
-            totalDaysTracked = dailyStats.count { it.completedSessions > 0 || it.isRestDay }
+            totalDaysTracked = dailyStats.count { it.completedSessions > 0 || it.isRestDay },
+            categoryBreakdown = categoryBreakdown,
+            routineBreakdown = routineBreakdown,
+            averageCompletedFocusMinutes = averageCompletedMinutes,
+            completedFocusSampleCount = windowFocus.size,
+            categorizedSessionCount = windowFocus.count {
+                it.categoryId != null || it.categoryNameSnapshot.isNotBlank()
+            },
+            routineSessionCount = windowFocus.count {
+                it.routineId != null || it.routineNameSnapshot.isNotBlank()
+            }
+        )
+    }
+
+    /**
+     * Groups completed focus sessions by their recorded label. Sessions without a label are
+     * excluded so the denominator stays honest. The displayed name is the most recent non-blank
+     * snapshot, and ids are never resolved against the current routines/categories table.
+     */
+    private fun buildContextBreakdown(
+        sessions: List<FocusSession>,
+        idSelector: (FocusSession) -> String?,
+        nameSelector: (FocusSession) -> String
+    ): List<FocusContextBreakdown> {
+        val labelled = sessions.filter { session ->
+            !idSelector(session).isNullOrBlank() || nameSelector(session).isNotBlank()
+        }
+        if (labelled.isEmpty()) return emptyList()
+
+        val grouped = LinkedHashMap<String, MutableList<FocusSession>>()
+        labelled.forEach { session ->
+            val id = idSelector(session)?.takeIf { it.isNotBlank() }
+            val name = nameSelector(session).trim()
+            val key = id ?: "name:$name"
+            grouped.getOrPut(key) { mutableListOf() }.add(session)
+        }
+
+        val totalMinutes = labelled.sumOf { it.completedMinutes }.coerceAtLeast(1)
+        return grouped.map { (id, matching) ->
+            val minutes = matching.sumOf { it.completedMinutes }
+            FocusContextBreakdown(
+                id = id,
+                name = matching.firstNotNullOfOrNull { session ->
+                    nameSelector(session).trim().takeIf { it.isNotBlank() }
+                } ?: "Unnamed",
+                count = matching.size,
+                minutes = minutes,
+                shareFraction = (minutes.toFloat() / totalMinutes.toFloat()).coerceIn(0f, 1f)
+            )
+        }.sortedWith(
+            compareByDescending<FocusContextBreakdown> { it.minutes }
+                .thenByDescending { it.count }
+                .thenBy { it.name }
         )
     }
 
