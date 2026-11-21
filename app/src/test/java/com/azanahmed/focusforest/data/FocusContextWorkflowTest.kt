@@ -119,7 +119,7 @@ class FocusContextWorkflowTest {
     }
 
     @Test
-    fun `routine start copies snapshots and later edit rename delete cannot rewrite active or completed history`() = runBlocking {
+    fun `routine start copies snapshots and later edit rename delete cannot rewrite active or completed history`() = runBlocking(Dispatchers.IO) {
         val dispatcher = StandardTestDispatcher()
         Dispatchers.setMain(dispatcher)
         try {
