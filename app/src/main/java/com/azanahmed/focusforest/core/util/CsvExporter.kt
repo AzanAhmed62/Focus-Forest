@@ -19,7 +19,11 @@ object CsvExporter {
         zoneId: ZoneId = ZoneId.systemDefault()
     ): String {
         val sb = StringBuilder()
-        sb.appendLine("id,date,session_type,planned_minutes,completed_minutes,status,xp_awarded,seeds_awarded,label,started_at,ended_at")
+        sb.appendLine(
+            "id,date,session_type,planned_minutes,completed_minutes,status,xp_awarded," +
+                "seeds_awarded,label,started_at,ended_at,routine_id,routine_name," +
+                "routine_snapshot,category_id,category_name,note,reflection"
+        )
         sessions.forEach { s ->
             val started = Instant.ofEpochMilli(s.startedAtWallMs).atZone(zoneId).format(isoFormatter)
             val ended = s.endedAtWallMs?.let {
@@ -37,7 +41,14 @@ object CsvExporter {
                     s.seedsAwarded.toString(),
                     escape(s.intentionLabel),
                     escape(started),
-                    escape(ended)
+                    escape(ended),
+                    escape(s.routineId.orEmpty()),
+                    escape(s.routineNameSnapshot),
+                    escape(s.routineSnapshot),
+                    escape(s.categoryId.orEmpty()),
+                    escape(s.categoryNameSnapshot),
+                    escape(s.note),
+                    escape(s.reflection?.name.orEmpty())
                 ).joinToString(",")
             )
         }
