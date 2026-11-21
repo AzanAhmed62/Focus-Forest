@@ -514,6 +514,7 @@ fun FocusScreen(
                             if (showStartButton) {
                                 Button(
                                     onClick = { viewModel.startSession() },
+                                    enabled = state.isReady,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(54.dp)
@@ -523,10 +524,11 @@ fun FocusScreen(
                                     Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        if (state.isChainMode) {
-                                            "Start ${state.chainConfig.totalFocusSessions}-Round Chain"
-                                        } else {
-                                            "Begin ${state.selectedType.displayName}"
+                                        when {
+                                            !state.isReady -> "Preparing…"
+                                            state.isChainMode ->
+                                                "Start ${state.chainConfig.totalFocusSessions}-Round Chain"
+                                            else -> "Begin ${state.selectedType.displayName}"
                                         }
                                     )
                                 }

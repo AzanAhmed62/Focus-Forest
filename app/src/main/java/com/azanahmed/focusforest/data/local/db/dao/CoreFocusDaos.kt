@@ -62,6 +62,7 @@ interface FocusSessionDao {
           AND (:uncategorized = 0 OR categoryId IS NULL)
           AND (:routineId IS NULL OR routineId = :routineId)
           AND (:status IS NULL OR status = :status)
+          AND (:status IS NOT NULL OR status IN ('COMPLETED', 'ABORTED', 'INTERRUPTED'))
           AND (
               :query = '' OR instr(
                   lower(

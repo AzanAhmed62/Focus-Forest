@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val displayName: String = "",
     val dailyGoalMinutes: Int = 50,
+    val weeklyGoalMinutes: Int = 350,
     val dailyUsageBudgetMinutes: Int = 120,
     val themePreference: ThemePreference = ThemePreference.SYSTEM,
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
@@ -54,6 +55,7 @@ class SettingsViewModel(
         container.preferencesDataStore.themePreference,
         container.preferencesDataStore.notificationPreferences,
         container.preferencesDataStore.usageTrackingEnabled,
+        container.preferencesDataStore.weeklyGoalMinutes,
         localDialogs
     ) { values ->
         val profile = values[0] as com.azanahmed.focusforest.domain.model.UserProfile?
@@ -62,11 +64,13 @@ class SettingsViewModel(
         val theme = values[3] as ThemePreference
         val notif = values[4] as NotificationPreferences
         val usageEnabled = values[5] as Boolean
-        val dialogs = values[6] as SettingsUiState
+        val weeklyGoal = values[6] as Int
+        val dialogs = values[7] as SettingsUiState
 
         dialogs.copy(
             displayName = profile?.displayName ?: "",
             dailyGoalMinutes = goal,
+            weeklyGoalMinutes = weeklyGoal,
             dailyUsageBudgetMinutes = usageBudget,
             themePreference = theme,
             notificationPreferences = notif,
@@ -100,6 +104,16 @@ class SettingsViewModel(
         viewModelScope.launch {
             container.usageRepository.setDailyUsageBudget(minutes)
             _toastEvents.emit("Daily screen-time budget updated.")
+        }
+    }
+
+    /** Weekly target is independent from the daily goal; 0 means no weekly target. */
+    fun updateWeeklyGoal(minutes: Int) {
+        viewModelScope.launch {
+            container.preferencesDataStore.setWeeklyGoalMinutes(minutes)
+            _toastEvents.emit(
+                if (minutes <= 0) "Weekly target disabled." else "Weekly focus goal updated."
+            )
         }
     }
 

@@ -18,15 +18,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Forest
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.SelfImprovement
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Spa
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -51,6 +55,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.azanahmed.focusforest.domain.model.SessionStatus
 import com.azanahmed.focusforest.domain.model.SnapshotCompleteness
 import com.azanahmed.focusforest.domain.model.UsagePermissionStatus
 import com.azanahmed.focusforest.platform.usage.AndroidUsageStatsGateway
@@ -61,14 +66,19 @@ import com.azanahmed.focusforest.ui.components.FocusTrendBarChart
 import com.azanahmed.focusforest.ui.components.ForestIllustrationCanvas
 import com.azanahmed.focusforest.ui.components.StatPill
 import com.azanahmed.focusforest.ui.components.UsageAccessDisclosureDialog
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun TodayScreen(
     viewModel: TodayViewModel,
     onQuickStartFocus: () -> Unit,
+    onStartRoutine: (String) -> Unit,
     onOpenChallenges: () -> Unit,
     onOpenInsights: () -> Unit,
     onOpenForest: () -> Unit,
+    onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -138,14 +148,25 @@ fun TodayScreen(
                             )
                         }
                     }
-                    IconButton(
-                        onClick = onOpenSettings,
-                        modifier = Modifier.testTag("today_settings_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Settings,
-                            contentDescription = "Open Settings"
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onOpenHistory,
+                            modifier = Modifier.testTag("today_history_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.History,
+                                contentDescription = "Open focus history"
+                            )
+                        }
+                        IconButton(
+                            onClick = onOpenSettings,
+                            modifier = Modifier.testTag("today_settings_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Settings,
+                                contentDescription = "Open Settings"
+                            )
+                        }
                     }
                 }
             }
@@ -212,12 +233,121 @@ fun TodayScreen(
                         Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            if (state.activeChain != null && !state.activeChain!!.isCompleted) {
-                                "Resume Pomodoro Chain"
-                            } else {
-                                "Start Focus Session"
+                            when {
+                                state.activeTimer != null -> "Resume Focus Session"
+                                state.activeChain != null && !state.activeChain!!.isCompleted -> "Resume Pomodoro Chain"
+                                else -> "Start Focus Session"
                             }
                         )
+                    }
+                }
+            }
+
+            state.activeTimer?.let { timer ->
+                item {
+                    BotanicalCard(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = if (timer.status == SessionStatus.PAUSED) {
+                                        Icons.Rounded.Pause
+                                    } else {
+                                        Icons.Rounded.PlayArrow
+                                    },
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = if (timer.status == SessionStatus.PAUSED) {
+                                        "Focus session paused"
+                                    } else {
+                                        "Focus session in progress"
+                                    },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            TextButton(
+                                onClick = onQuickStartFocus,
+                                modifier = Modifier.testTag("today_resume_session_button")
+                            ) {
+                                Text("Open")
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "${timer.sessionType.displayName} · " +
+                                "${timer.plannedDurationMs / 60_000} min planned",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val contextLabel = listOfNotNull(
+                            timer.routineNameSnapshot.takeIf { it.isNotBlank() },
+                            timer.categoryNameSnapshot.takeIf { it.isNotBlank() }
+                        ).joinToString(" • ")
+                        if (contextLabel.isNotBlank()) {
+                            Text(
+                                text = contextLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.testTag("today_active_session_context")
+                            )
+                        }
+                    }
+                }
+            }
+
+            val idleForRoutines = state.activeTimer == null &&
+                (state.activeChain == null || state.activeChain?.isCompleted == true)
+            if (idleForRoutines && state.pinnedRoutines.isNotEmpty()) {
+                item {
+                    BotanicalCard {
+                        Text("Pinned Routines", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = "Start a saved focus template in one tap.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            state.pinnedRoutines.forEach { routine ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = routine.name,
+                                            style = MaterialTheme.typography.titleSmall
+                                        )
+                                        Text(
+                                            text = routine.snapshotLabel(),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = { onStartRoutine(routine.id) },
+                                        modifier = Modifier.testTag("today_start_routine_${routine.id}")
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.PlayArrow,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Start")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -419,12 +549,96 @@ fun TodayScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "${state.weeklyFocusMinutes} / ${state.weeklyGoalMinutes} min • " +
-                            "${(weeklyFraction * 100).toInt()}% of your weekly intention",
+                        text = if (state.weeklyGoalMinutes <= 0) {
+                            "${state.weeklyFocusMinutes} min this week • no weekly target set"
+                        } else {
+                            "${state.weeklyFocusMinutes} / ${state.weeklyGoalMinutes} min • " +
+                                "${(weeklyFraction * 100).toInt()}% of your weekly intention"
+                        },
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.testTag("weekly_goal_summary")
                     )
+                }
+            }
+
+            if (state.recentSessions.isNotEmpty()) {
+                item {
+                    BotanicalCard {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Rounded.History,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Recent Activity", style = MaterialTheme.typography.titleMedium)
+                            }
+                            TextButton(
+                                onClick = onOpenHistory,
+                                modifier = Modifier.testTag("today_recent_history_button")
+                            ) {
+                                Text("View all")
+                            }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            state.recentSessions.take(3).forEach { session ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = when (session.status) {
+                                            SessionStatus.COMPLETED -> Icons.Rounded.CheckCircle
+                                            SessionStatus.PAUSED -> Icons.Rounded.Pause
+                                            else -> Icons.Rounded.Stop
+                                        },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = if (session.status == SessionStatus.COMPLETED) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${session.sessionType.displayName} · " +
+                                                "${session.completedMinutes} min",
+                                            style = MaterialTheme.typography.titleSmall
+                                        )
+                                        val contextLabel = listOfNotNull(
+                                            session.routineNameSnapshot.takeIf { it.isNotBlank() },
+                                            session.categoryNameSnapshot.takeIf { it.isNotBlank() },
+                                            formatSessionDate(session.localDate)
+                                        ).joinToString(" • ")
+                                        Text(
+                                            text = contextLabel,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Text(
+                                        text = when (session.status) {
+                                            SessionStatus.COMPLETED -> "Completed"
+                                            SessionStatus.ABORTED -> "Stopped"
+                                            SessionStatus.INTERRUPTED -> "Interrupted"
+                                            else -> session.status.name.lowercase()
+                                                .replaceFirstChar { it.uppercase() }
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -522,3 +736,7 @@ fun TodayScreen(
         }
     }
 }
+
+private fun formatSessionDate(localDate: String): String = runCatching {
+    LocalDate.parse(localDate).format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault()))
+}.getOrDefault(localDate)

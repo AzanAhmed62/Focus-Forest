@@ -48,6 +48,8 @@ import com.azanahmed.focusforest.features.focus.FocusScreen
 import com.azanahmed.focusforest.features.focus.FocusViewModel
 import com.azanahmed.focusforest.features.forest.ForestScreen
 import com.azanahmed.focusforest.features.forest.ForestViewModel
+import com.azanahmed.focusforest.features.history.HistoryScreen
+import com.azanahmed.focusforest.features.history.HistoryViewModel
 import com.azanahmed.focusforest.features.home.TodayScreen
 import com.azanahmed.focusforest.features.home.TodayViewModel
 import com.azanahmed.focusforest.features.insights.InsightsScreen
@@ -188,9 +190,18 @@ fun FocusForestNavHost(
                             TodayScreen(
                                 viewModel = vm,
                                 onQuickStartFocus = { navigateTopLevel(FocusRoute()) },
+                                onStartRoutine = { routineId ->
+                                    navController.navigate(
+                                        FocusRoute(
+                                            routineId = routineId,
+                                            requestId = java.util.UUID.randomUUID().toString()
+                                        )
+                                    )
+                                },
                                 onOpenChallenges = { navigateTopLevel(ChallengesRoute) },
                                 onOpenInsights = { navigateTopLevel(InsightsRoute) },
                                 onOpenForest = { navigateTopLevel(ForestRoute) },
+                                onOpenHistory = { navController.navigate(HistoryRoute) },
                                 onOpenSettings = { navController.navigate(SettingsRoute) }
                             )
                         }
@@ -213,6 +224,14 @@ fun FocusForestNavHost(
                                         )
                                     )
                                 }
+                            )
+                        }
+
+                        composable<HistoryRoute> {
+                            val vm: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory(container))
+                            HistoryScreen(
+                                viewModel = vm,
+                                onBack = { navController.popBackStack() }
                             )
                         }
 

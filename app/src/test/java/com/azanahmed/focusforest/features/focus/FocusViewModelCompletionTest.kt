@@ -28,6 +28,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -116,6 +117,15 @@ class FocusViewModelCompletionTest {
                 )
                 val viewModel = FocusViewModel(container, context)
                 dispatcher.scheduler.runCurrent()
+
+                // Initialization reads persisted timer/chain state asynchronously. Wait for the
+                // view model to be ready instead of racing the first DataStore emission.
+                val readyDeadline = System.currentTimeMillis() + 10_000L
+                while (!viewModel.uiState.value.isReady && System.currentTimeMillis() < readyDeadline) {
+                    dispatcher.scheduler.runCurrent()
+                    Thread.sleep(10L)
+                }
+                assertTrue("View model should become ready", viewModel.uiState.value.isReady)
 
                 viewModel.selectSessionType(SessionType.SHORT_BREAK)
                 viewModel.startSession()

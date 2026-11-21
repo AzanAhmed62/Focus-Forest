@@ -84,6 +84,12 @@ class OnboardingViewModel(
             _uiState.update { it.copy(isSaving = true) }
             val current = _uiState.value
             container.shopAndForestRepository.ensureCatalogSeeded()
+            // Seed and initialize before onboarding is marked complete. Writing the completion
+            // flag first lets navigation dispose this ViewModel and cancel viewModelScope before
+            // the starter templates/weekly goal are persisted.
+            container.focusContextRepository.seedDefaultsIfEmpty()
+            container.preferencesDataStore.setDailyGoalMinutes(current.dailyGoalMinutes)
+            container.preferencesDataStore.ensureWeeklyGoalInitialized()
             container.focusRepository.completeOnboarding(
                 displayName = current.displayName,
                 dailyGoalMinutes = current.dailyGoalMinutes,

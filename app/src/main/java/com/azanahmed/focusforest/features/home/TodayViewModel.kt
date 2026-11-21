@@ -6,10 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.azanahmed.focusforest.core.di.AppContainer
 import com.azanahmed.focusforest.domain.engine.XpLevelEngine
 import com.azanahmed.focusforest.domain.model.ActiveChainState
+import com.azanahmed.focusforest.domain.model.ActiveTimerState
 import com.azanahmed.focusforest.domain.model.ChallengeItem
 import com.azanahmed.focusforest.domain.model.ChallengePeriod
 import com.azanahmed.focusforest.domain.model.ChallengeStatus
 import com.azanahmed.focusforest.domain.model.DailyStats
+import com.azanahmed.focusforest.domain.model.FocusRoutine
+import com.azanahmed.focusforest.domain.model.FocusSession
 import com.azanahmed.focusforest.domain.model.ForestState
 import com.azanahmed.focusforest.domain.model.PersonalRecords
 import com.azanahmed.focusforest.domain.model.UsageDashboardState
@@ -36,6 +39,9 @@ data class TodayUiState(
     val forestState: ForestState = ForestState(),
     val usageState: UsageDashboardState = UsageDashboardState(),
     val activeChain: ActiveChainState? = null,
+    val activeTimer: ActiveTimerState? = null,
+    val pinnedRoutines: List<FocusRoutine> = emptyList(),
+    val recentSessions: List<FocusSession> = emptyList(),
     val levelProgressFraction: Float = 0f,
     val weeklyFocusMinutes: Int = 0,
     val weeklyGoalMinutes: Int = 0,
@@ -57,7 +63,11 @@ class TodayViewModel(
         container.shopAndForestRepository.forestState,
         container.usageRepository.dashboardState,
         container.preferencesDataStore.dailyGoalMinutes,
-        container.focusRepository.activeChainState
+        container.focusRepository.activeChainState,
+        container.focusContextRepository.pinnedRoutines,
+        container.focusRepository.activeTimerState,
+        container.focusRepository.recentSessions,
+        container.preferencesDataStore.weeklyGoalMinutes
     ) { values ->
         val profile = values[0] as UserProfile?
         @Suppress("UNCHECKED_CAST")
@@ -69,6 +79,12 @@ class TodayViewModel(
         val usage = values[5] as UsageDashboardState
         val goalMinutes = values[6] as Int
         val activeChain = values[7] as ActiveChainState?
+        @Suppress("UNCHECKED_CAST")
+        val pinnedRoutines = values[8] as List<FocusRoutine>
+        val activeTimer = values[9] as ActiveTimerState?
+        @Suppress("UNCHECKED_CAST")
+        val recentSessions = values[10] as List<FocusSession>
+        val weeklyGoalMinutes = values[11] as Int
 
         val todayDate = container.clockProvider.todayLocalDate()
         val todayStr = todayDate.toString()
@@ -86,7 +102,6 @@ class TodayViewModel(
             .map { weekStart.plusDays(it) }
             .filter { !it.isAfter(todayDate) }
             .sumOf { statsMap[it.toString()]?.focusMinutes ?: 0 }
-        val weeklyGoalMinutes = (goalMinutes * 7).coerceAtLeast(1)
 
         val todayChallenges = challenges.filter { it.period == ChallengePeriod.DAILY && it.periodKey == todayStr }
         val highlight = todayChallenges.firstOrNull { it.status == ChallengeStatus.ACTIVE }
@@ -114,6 +129,9 @@ class TodayViewModel(
             forestState = forest,
             usageState = usage,
             activeChain = activeChain,
+            activeTimer = activeTimer,
+            pinnedRoutines = pinnedRoutines,
+            recentSessions = recentSessions,
             levelProgressFraction = levelInfo.progressFraction,
             weeklyFocusMinutes = weeklyFocusMinutes,
             weeklyGoalMinutes = weeklyGoalMinutes,

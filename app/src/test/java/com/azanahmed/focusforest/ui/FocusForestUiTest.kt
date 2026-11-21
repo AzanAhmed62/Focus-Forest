@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -82,19 +83,42 @@ class FocusForestUiTest {
         composeRule.onNodeWithTag("nav_focus").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("focus_lazy_column").performScrollToNode(hasTestTag("start_focus_button"))
+        composeRule.waitUntil(timeoutMillis = 5000) {
+            composeRule.onAllNodesWithText("Begin Pomodoro").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("start_focus_button").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("timer_countdown_text")
             .assertContentDescriptionContains("remaining", substring = true)
+        composeRule.onNodeWithTag("focus_lazy_column")
+            .performScrollToNode(hasTestTag("pause_focus_button"))
         composeRule.onNodeWithTag("pause_focus_button").assertIsDisplayed().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("timer_countdown_text")
             .assertContentDescriptionContains("paused", substring = true)
+        composeRule.onNodeWithTag("focus_lazy_column")
+            .performScrollToNode(hasTestTag("abort_focus_button"))
         composeRule.onNodeWithTag("abort_focus_button").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("confirm_abort_button").performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("focus_lazy_column")
+            .performScrollToNode(hasTestTag("start_focus_button"))
         composeRule.onNodeWithTag("start_focus_button").assertIsDisplayed()
+
+        // Routines are seeded during onboarding and reachable in one action from Focus.
+        composeRule.onNodeWithTag("focus_lazy_column")
+            .performScrollToNode(hasTestTag("open_routines_button"))
+        composeRule.onNodeWithTag("open_routines_button").performClick()
+        composeRule.waitUntil(timeoutMillis = 5000) {
+            composeRule.onAllNodesWithTag("routines_lazy_column").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("routines_lazy_column")
+            .performScrollToNode(hasTestTag("routine_card_routine_classic"))
+        composeRule.onNodeWithTag("routine_card_routine_classic").assertIsDisplayed()
+        composeRule.onNodeWithText("Classic Focus").assertIsDisplayed()
+        composeRule.onNodeWithTag("routines_back_button").performClick()
+        composeRule.waitForIdle()
 
         // Toggle Ambient Soundscape chip & Pomodoro Chain mode card
         composeRule.onNodeWithTag("focus_lazy_column").performScrollToNode(hasTestTag("mode_pomodoro_chain"))
@@ -159,9 +183,34 @@ class FocusForestUiTest {
         composeRule.onNodeWithTag("shop_back_button").performClick()
         composeRule.waitForIdle()
 
-        // Navigate back to Today & open Settings -> Theme -> Privacy -> Delete All Data reset check
+        // Navigate back to Today, inspect the aborted session in History, then open Settings
         composeRule.onNodeWithTag("nav_today").performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("today_lazy_column")
+            .performScrollToNode(hasTestTag("today_history_button"))
+        composeRule.onNodeWithTag("today_history_button").performClick()
+        composeRule.waitUntil(timeoutMillis = 5000) {
+            composeRule.onAllNodesWithTag("history_lazy_column").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("history_lazy_column")
+            .performScrollToNode(hasTestTag("history_result_count"))
+        composeRule.waitUntil(timeoutMillis = 5000) {
+            composeRule.onAllNodesWithText("1 session").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("1 session").assertIsDisplayed()
+        composeRule.onNodeWithTag("history_lazy_column")
+            .performScrollToNode(hasText("Pomodoro"))
+        composeRule.onAllNodesWithText("Pomodoro")[0].performClick()
+        composeRule.waitUntil(timeoutMillis = 3000) {
+            composeRule.onAllNodesWithTag("history_detail_dialog").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("history_detail_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("history_note_input").assertIsDisplayed()
+        composeRule.onNodeWithTag("history_close_button").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("history_back_button").performClick()
+        composeRule.waitForIdle()
+
         composeRule.onNodeWithTag("today_lazy_column")
             .performScrollToNode(hasTestTag("today_settings_button"))
         composeRule.onNodeWithTag("today_settings_button").performClick()

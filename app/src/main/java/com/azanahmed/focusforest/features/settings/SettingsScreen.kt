@@ -86,6 +86,7 @@ fun SettingsScreen(
 
     var editableName by remember(state.displayName) { mutableStateOf(state.displayName) }
     var editableGoal by remember(state.dailyGoalMinutes) { mutableIntStateOf(state.dailyGoalMinutes) }
+    var editableWeeklyGoal by remember(state.weeklyGoalMinutes) { mutableIntStateOf(state.weeklyGoalMinutes) }
     var editableBudget by remember(state.dailyUsageBudgetMinutes) { mutableIntStateOf(state.dailyUsageBudgetMinutes) }
 
     val notificationPermLauncher = rememberLauncherForActivityResult(
@@ -212,6 +213,33 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
+                            Text("Weekly focus goal", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                text = if (editableWeeklyGoal <= 0) {
+                                    "No target"
+                                } else {
+                                    "$editableWeeklyGoal min"
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.testTag("weekly_goal_value")
+                            )
+                        }
+                        Slider(
+                            value = editableWeeklyGoal.toFloat(),
+                            onValueChange = { editableWeeklyGoal = (it / 60f).toInt() * 60 },
+                            valueRange = 0f..2520f,
+                            steps = 41,
+                            modifier = Modifier.testTag("weekly_goal_slider")
+                        )
+                        Text(
+                            text = "Independent from your daily goal. Set to 0 to disable the weekly target.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
                             Text("Daily screen-time budget", style = MaterialTheme.typography.bodyMedium)
                             Text("${editableBudget} min", style = MaterialTheme.typography.titleSmall)
                         }
@@ -223,6 +251,7 @@ fun SettingsScreen(
                         Button(
                             onClick = {
                                 viewModel.updateProfile(editableName, editableGoal)
+                                viewModel.updateWeeklyGoal(editableWeeklyGoal)
                                 viewModel.updateDailyUsageBudget(editableBudget)
                             },
                             modifier = Modifier.testTag("save_profile_settings_button")

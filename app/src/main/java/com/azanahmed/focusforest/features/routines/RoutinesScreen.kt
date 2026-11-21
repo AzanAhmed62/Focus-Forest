@@ -304,7 +304,7 @@ private fun RoutineCard(
     onDelete: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    BotanicalCard {
+    BotanicalCard(modifier = Modifier.testTag("routine_card_${routine.id}")) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
