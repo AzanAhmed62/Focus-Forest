@@ -1,6 +1,6 @@
 # Future Backend Boundaries
 
-Status: informational boundary document for Phase 0.3. Focus Forest has **no backend**,
+Status: informational boundary document for Phase 0.4. Focus Forest has **no backend**,
 **no accounts**, **no network permission**, and **no remote analytics**. Nothing in this
 document authorizes adding one; it defines the conditions a future server-backed feature
 would have to satisfy before it could be considered.
@@ -10,8 +10,9 @@ would have to satisfy before it could be considered.
 These are product and privacy guarantees, not temporary implementation details:
 
 - The app declares no `android.permission.INTERNET`.
-- Core focus timers, Pomodoro Chains, ambient soundscapes, challenges, achievements,
-  forest growth, and local history work fully offline.
+- Core focus timers, Pomodoro Chains, reusable routines, ambient soundscapes, challenges,
+  achievements, forest growth, session history, categories, notes, and reflections work
+  fully offline.
 - Session completion and reward credit are decided on-device by `RewardAuthority` and the
   local reward ledger. A server must never be required to finish a local session or grant
   local XP, seeds, or trees.
@@ -29,9 +30,9 @@ Any future design must classify data before moving it:
 
 | Class | Examples | Default rule |
 | :--- | :--- | :--- |
-| Sensitive local-only | Raw app usage durations, observed package names, app labels/icons, focus intentions | Never uploaded by default. Requires explicit, separate opt-in if ever shared. |
-| User content | Custom challenge titles, forest layout, display name, avatar style | May sync only with explicit consent and deletion parity. |
-| Derived local data | Daily/weekly focus totals, challenge history, streaks, levels | Prefer recomputing locally from synced primitives instead of uploading aggregates. |
+| Sensitive local-only | Raw app usage durations, observed package names, app labels/icons, focus intentions, session notes/reflections | Never uploaded by default. Requires explicit, separate opt-in if ever shared. |
+| User content | Custom challenge titles, routine/category names and descriptions, forest layout, display name, avatar style | May sync only with explicit consent and deletion parity. |
+| Derived local data | Daily/weekly focus totals, weekly goal, category/routine insights, challenge history, streaks, levels | Prefer recomputing locally from synced primitives instead of uploading aggregates. |
 | Device configuration | Theme, sound preset, notification preferences, quiet hours | Local by default; sync only if it materially improves the feature. |
 | Operational metadata | Crash reports, sync diagnostics, install IDs | Not collected today. Any future collection needs a privacy review and an opt-out story. |
 
@@ -70,7 +71,7 @@ Any future design must classify data before moving it:
 12. **Feature-flag discipline.** Ship network features dark or behind an explicit local
     switch until the privacy, security, and offline behavior are verified.
 
-## 4. Explicitly Out of Scope for Phase 0.3
+## 4. Explicitly Out of Scope for Phase 0.4
 
 The following remain prohibited in this phase and are not implied by this document:
 
@@ -96,18 +97,18 @@ Before implementation, a proposal should answer:
 - Which tests prove offline behavior, privacy boundaries, and deletion parity?
 - Has the privacy document, feature-status table, and README been updated?
 
-## 6. Phase 0.4 Recommendation
+## 6. Phase 0.5 Recommendation
 
-Do not add a backend in Phase 0.4. The highest-value next work is local product depth and
-device verification:
+Do not add a backend in Phase 0.5. The highest-value next work is device verification and
+continued local polish:
 
-1. Run a TalkBack and large-font pass on onboarding, focus, challenges, insights, and
-   privacy screens.
+1. Run a TalkBack and large-font pass on onboarding, focus, routines, history, challenges,
+   insights, and privacy screens.
 2. Verify API 36 behavior on a real device or emulator, including notification permission,
    Doze/WorkManager completion, and reboot recovery.
-3. Exercise CSV share-sheet behavior and full-data deletion on-device.
-4. Continue local-only feature depth (for example, richer history filters or export
-   summaries) only where it can be verified without a server.
+3. Exercise CSV share-sheet behavior, migration from a real Phase 0.3 install, and
+   full-data deletion on-device.
+4. Continue local-only feature depth only where it can be verified without a server.
 
 If a server-backed feature is ever proposed, treat it as a new architecture phase with its
 own threat model, privacy review, migration plan, and explicit user consent design.
