@@ -29,7 +29,8 @@ enum class ShopFilterTab {
 data class ShopUiState(
     val leafPointsBalance: Int = 0,
     val selectedFilter: ShopFilterTab = ShopFilterTab.ALL,
-    val items: List<ShopCatalogItem> = emptyList()
+    val items: List<ShopCatalogItem> = emptyList(),
+    val isLoading: Boolean = true
 )
 
 class ShopViewModel(
@@ -53,10 +54,19 @@ class ShopViewModel(
             ShopFilterTab.DECORATION -> items.filter { it.category == ShopCategory.DECORATION }
             ShopFilterTab.ENVIRONMENT -> items.filter { it.category == ShopCategory.ENVIRONMENT }
         }
+        // Equipped and owned items stay at the top so the current grove is easy to understand.
+        val sorted = filtered.sortedWith(
+            compareByDescending<ShopCatalogItem> { it.equipped }
+                .thenByDescending { it.owned }
+                .thenBy { it.category.ordinal }
+                .thenBy { it.costLeafPoints }
+                .thenBy { it.name }
+        )
         ShopUiState(
             leafPointsBalance = forest.spendableLeafPoints,
             selectedFilter = filter,
-            items = filtered
+            items = sorted,
+            isLoading = false
         )
     }.stateIn(
         scope = viewModelScope,
@@ -93,7 +103,8 @@ class ShopViewModel(
                     val deficit = (item.costLeafPoints - uiState.value.leafPointsBalance).coerceAtLeast(1)
                     _events.emit("Insufficient Leaf Points — need $deficit more to unlock ${item.name}.")
                 }
-                ShopActionResult.ItemNotFound -> Unit
+                ShopActionResult.ItemNotFound,
+                ShopActionResult.NotOwned -> Unit
             }
         }
     }

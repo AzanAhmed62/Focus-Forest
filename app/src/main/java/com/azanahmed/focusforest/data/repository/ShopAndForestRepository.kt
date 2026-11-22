@@ -18,6 +18,7 @@ sealed class ShopActionResult {
     data object Success : ShopActionResult()
     data object InsufficientPoints : ShopActionResult()
     data object ItemNotFound : ShopActionResult()
+    data object NotOwned : ShopActionResult()
 }
 
 class ShopAndForestRepository(
@@ -120,6 +121,23 @@ class ShopAndForestRepository(
             }
 
             equipInternal(item, catalog, shopDao.getOwnedItemsOnce())
+            ShopActionResult.Success
+        }
+    }
+
+    /**
+     * Equips an item the user already owns without allowing an accidental purchase.
+     * Used by the Forest screen's environment and decoration controls.
+     */
+    suspend fun equipOwnedItem(itemId: String): ShopActionResult {
+        return db.withTransaction {
+            val catalog = shopDao.getCatalogOnce()
+            val item = catalog.find { it.id == itemId } ?: return@withTransaction ShopActionResult.ItemNotFound
+            val ownedList = shopDao.getOwnedItemsOnce()
+            if (ownedList.none { it.itemId == itemId }) {
+                return@withTransaction ShopActionResult.NotOwned
+            }
+            equipInternal(item, catalog, ownedList)
             ShopActionResult.Success
         }
     }

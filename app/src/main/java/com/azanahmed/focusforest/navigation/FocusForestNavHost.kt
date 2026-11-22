@@ -249,7 +249,9 @@ fun FocusForestNavHost(
                             val vm: ForestViewModel = viewModel(factory = ForestViewModel.Factory(container))
                             ForestScreen(
                                 viewModel = vm,
-                                onOpenShop = { navController.navigate(ShopRoute) }
+                                onOpenShop = { navController.navigate(ShopRoute) },
+                                onOpenHistory = { navController.navigate(HistoryRoute) },
+                                onStartFocus = { navigateTopLevel(FocusRoute()) }
                             )
                         }
 
