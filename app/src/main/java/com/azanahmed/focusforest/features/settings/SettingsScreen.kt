@@ -25,12 +25,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material.icons.rounded.Spa
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,10 +69,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.azanahmed.focusforest.BuildConfig
+import com.azanahmed.focusforest.domain.model.AmbientSoundPreset
+import com.azanahmed.focusforest.domain.model.SessionType
 import com.azanahmed.focusforest.domain.model.ThemePreference
 import com.azanahmed.focusforest.platform.usage.AndroidUsageStatsGateway
 import com.azanahmed.focusforest.ui.components.BotanicalCard
+import com.azanahmed.focusforest.ui.components.SectionHeader
 import com.azanahmed.focusforest.ui.components.UsageAccessDisclosureDialog
+import com.azanahmed.focusforest.ui.theme.ForestRadii
+import com.azanahmed.focusforest.ui.theme.ForestSizes
+import com.azanahmed.focusforest.ui.theme.ForestSpacing
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -86,15 +96,24 @@ fun SettingsScreen(
 
     var editableName by remember(state.displayName) { mutableStateOf(state.displayName) }
     var editableGoal by remember(state.dailyGoalMinutes) { mutableIntStateOf(state.dailyGoalMinutes) }
-    var editableWeeklyGoal by remember(state.weeklyGoalMinutes) { mutableIntStateOf(state.weeklyGoalMinutes) }
-    var editableBudget by remember(state.dailyUsageBudgetMinutes) { mutableIntStateOf(state.dailyUsageBudgetMinutes) }
+    var editableWeeklyGoal by remember(state.weeklyGoalMinutes) {
+        mutableIntStateOf(state.weeklyGoalMinutes)
+    }
+    var editableBudget by remember(state.dailyUsageBudgetMinutes) {
+        mutableIntStateOf(state.dailyUsageBudgetMinutes)
+    }
+    var editableVolume by remember(state.ambientVolume) {
+        mutableFloatStateOf(state.ambientVolume)
+    }
 
     val notificationPermLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         viewModel.refreshPermissions()
         if (granted) {
-            viewModel.updateNotificationPrefs(state.notificationPreferences.copy(notificationsEnabled = true))
+            viewModel.updateNotificationPrefs(
+                state.notificationPreferences.copy(notificationsEnabled = true)
+            )
         }
     }
 
@@ -137,12 +156,18 @@ fun SettingsScreen(
             onDismissRequest = { viewModel.dismissDeleteAllDialog() },
             title = { Text("Delete all local data?") },
             text = {
-                Text("This permanently erases all focus sessions, streaks, forest trees, challenges, shop items, scheduled reminders, and usage snapshots from this device.")
+                Text(
+                    "This permanently erases all focus sessions, streaks, forest trees, " +
+                        "challenges, shop items, scheduled reminders, and usage snapshots " +
+                        "from this device. This cannot be undone."
+                )
             },
             confirmButton = {
                 Button(
                     onClick = { viewModel.confirmDeleteAllData(onDataDeletedResetToOnboarding) },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    ),
                     modifier = Modifier.testTag("confirm_delete_all_button")
                 ) {
                     Text("Delete Everything")
@@ -161,7 +186,10 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Settings") },
                 navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_button")) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("settings_back_button")
+                    ) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 }
@@ -180,23 +208,146 @@ fun SettingsScreen(
                     .fillMaxSize()
                     .widthIn(max = 620.dp)
                     .testTag("settings_lazy_column"),
-                contentPadding = PaddingValues(18.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                contentPadding = PaddingValues(
+                    horizontal = ForestSpacing.screenHorizontal,
+                    vertical = ForestSpacing.screenVertical
+                ),
+                verticalArrangement = Arrangement.spacedBy(ForestSpacing.sectionGap)
             ) {
-                // 1. Personal Profile & Daily Goal
+                // 1. Appearance
+                item {
+                    SectionHeader(
+                        title = "Appearance",
+                        subtitle = "Choose the palette that feels calm to you."
+                    )
+                }
                 item {
                     BotanicalCard {
-                        Text("Profile, Focus Goal & Usage Budget", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Rounded.Palette,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(ForestSpacing.xs))
+                            Text("Theme", style = MaterialTheme.typography.titleMedium)
+                        }
+                        Spacer(modifier = Modifier.height(ForestSpacing.xs))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(ForestSpacing.xs)) {
+                            ThemePreference.entries.forEach { pref ->
+                                FilterChip(
+                                    selected = state.themePreference == pref,
+                                    onClick = { viewModel.setThemePreference(pref) },
+                                    label = { Text(pref.label) },
+                                    modifier = Modifier.testTag("theme_chip_${pref.name}")
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 2. Focus defaults
+                item {
+                    SectionHeader(
+                        title = "Focus",
+                        subtitle = "The starting session on the Focus screen. " +
+                            "Any running timer keeps its own settings."
+                    )
+                }
+                item {
+                    BotanicalCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Rounded.Timer,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(ForestSpacing.xs))
+                            Text("Default session", style = MaterialTheme.typography.titleMedium)
+                        }
+                        Spacer(modifier = Modifier.height(ForestSpacing.xs))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(ForestSpacing.xs)) {
+                            listOf(
+                                SessionType.POMODORO,
+                                SessionType.DEEP_WORK,
+                                SessionType.CUSTOM
+                            ).forEach { type ->
+                                FilterChip(
+                                    selected = state.defaultSessionType == type,
+                                    onClick = {
+                                        viewModel.setDefaultSession(
+                                            type = type,
+                                            minutes = if (type == SessionType.CUSTOM) {
+                                                state.defaultSessionMinutes
+                                            } else {
+                                                type.defaultMinutes
+                                            }
+                                        )
+                                    },
+                                    label = {
+                                        Text("${type.displayName} (${type.defaultMinutes}m)")
+                                    },
+                                    modifier = Modifier.testTag(
+                                        "settings_default_session_${type.name}"
+                                    )
+                                )
+                            }
+                        }
+                        if (state.defaultSessionType == SessionType.CUSTOM) {
+                            Spacer(modifier = Modifier.height(ForestSpacing.xs))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Custom length", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    text = "${state.defaultSessionMinutes} min",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Slider(
+                                value = state.defaultSessionMinutes.toFloat(),
+                                onValueChange = {
+                                    viewModel.setDefaultSession(
+                                        SessionType.CUSTOM,
+                                        (it / 5f).toInt() * 5
+                                    )
+                                },
+                                valueRange = 10f..90f,
+                                modifier = Modifier.testTag("settings_custom_minutes_slider")
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.height(ForestSpacing.xxs))
+                            Text(
+                                text = "${state.defaultSessionType.defaultMinutes} minutes, " +
+                                    "planting a ${state.defaultSessionType.treeSpecies.displayName}.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // 3. Profile and goals
+                item {
+                    SectionHeader(
+                        title = "Goals",
+                        subtitle = "Targets are intentions, never debts."
+                    )
+                }
+                item {
+                    BotanicalCard {
                         OutlinedTextField(
                             value = editableName,
                             onValueChange = { editableName = it.take(40) },
                             label = { Text("Display name") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp)
+                            shape = RoundedCornerShape(ForestRadii.control)
                         )
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(ForestSpacing.sm))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -232,22 +383,36 @@ fun SettingsScreen(
                             modifier = Modifier.testTag("weekly_goal_slider")
                         )
                         Text(
-                            text = "Independent from your daily goal. Set to 0 to disable the weekly target.",
+                            text = "Independent from your daily goal. Set to 0 to disable " +
+                                "the weekly target.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(ForestSpacing.xs))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Daily screen-time budget", style = MaterialTheme.typography.bodyMedium)
-                            Text("${editableBudget} min", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Daily screen-time budget",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                "${editableBudget} min",
+                                style = MaterialTheme.typography.titleSmall
+                            )
                         }
                         Slider(
                             value = editableBudget.toFloat(),
                             onValueChange = { editableBudget = (it / 15f).toInt() * 15 },
                             valueRange = 30f..360f
                         )
+                        Text(
+                            text = "Only used when optional Usage Access is enabled.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(ForestSpacing.sm))
                         Button(
                             onClick = {
                                 viewModel.updateProfile(editableName, editableGoal)
@@ -261,46 +426,107 @@ fun SettingsScreen(
                     }
                 }
 
-                // 2. Appearance Theme
+                // 4. Ambient audio
+                item {
+                    SectionHeader(
+                        title = "Audio",
+                        subtitle = "Sound is generated on this device and never starts on its own."
+                    )
+                }
                 item {
                     BotanicalCard {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Appearance", style = MaterialTheme.typography.titleMedium)
+                            Icon(
+                                Icons.AutoMirrored.Rounded.VolumeUp,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(ForestSpacing.xs))
+                            Text("Ambient soundscape", style = MaterialTheme.typography.titleMedium)
                         }
-                        Spacer(Modifier.height(10.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ThemePreference.entries.forEach { pref ->
+                        Spacer(modifier = Modifier.height(ForestSpacing.xs))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(ForestSpacing.xs)) {
+                            AmbientSoundPreset.entries.forEach { preset ->
                                 FilterChip(
-                                    selected = state.themePreference == pref,
-                                    onClick = { viewModel.setThemePreference(pref) },
-                                    label = { Text(pref.label) },
-                                    modifier = Modifier.testTag("theme_chip_${pref.name}")
+                                    selected = state.ambientPreset == preset,
+                                    onClick = { viewModel.setAmbientPreset(preset) },
+                                    label = { Text(preset.displayName) },
+                                    modifier = Modifier.testTag(
+                                        "settings_ambient_${preset.name}"
+                                    )
                                 )
                             }
+                        }
+                        if (state.ambientPreset != AmbientSoundPreset.NONE) {
+                            Spacer(modifier = Modifier.height(ForestSpacing.xs))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Volume", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    text = "${(editableVolume * 100).toInt()}%",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Slider(
+                                value = editableVolume,
+                                onValueChange = {
+                                    editableVolume = it
+                                    viewModel.setAmbientVolume(it)
+                                },
+                                valueRange = 0f..1f,
+                                modifier = Modifier.testTag("settings_ambient_volume_slider")
+                            )
+                            SwitchRow(
+                                label = "Start with focus sessions",
+                                checked = state.ambientPlayWithSession,
+                                onCheckedChange = { viewModel.setAmbientPlayWithSession(it) },
+                                switchModifier = Modifier.testTag(
+                                    "settings_ambient_play_switch"
+                                )
+                            )
                         }
                     }
                 }
 
-                // 3. Respectful Notifications
+                // 5. Notifications
+                item {
+                    SectionHeader(
+                        title = "Notifications",
+                        subtitle = "Optional and off by default. The timer works without them."
+                    )
+                }
                 item {
                     val np = state.notificationPreferences
                     BotanicalCard {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Respectful Notifications", style = MaterialTheme.typography.titleMedium)
+                            Icon(
+                                Icons.Rounded.Notifications,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(ForestSpacing.xs))
+                            Text("Reminders", style = MaterialTheme.typography.titleMedium)
                         }
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(ForestSpacing.xs))
                         SwitchRow(
                             label = "Enable optional notifications",
                             checked = np.notificationsEnabled,
                             onCheckedChange = { enabled ->
-                                if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !state.notificationPermissionGranted) {
-                                    notificationPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                if (enabled &&
+                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    !state.notificationPermissionGranted
+                                ) {
+                                    notificationPermLauncher.launch(
+                                        Manifest.permission.POST_NOTIFICATIONS
+                                    )
                                 } else {
-                                    viewModel.updateNotificationPrefs(np.copy(notificationsEnabled = enabled))
+                                    viewModel.updateNotificationPrefs(
+                                        np.copy(notificationsEnabled = enabled)
+                                    )
                                 }
                             }
                         )
@@ -309,14 +535,22 @@ fun SettingsScreen(
                                 label = "Completed focus session alert",
                                 checked = np.sessionCompletionEnabled,
                                 onCheckedChange = {
-                                    viewModel.updateNotificationPrefs(np.copy(sessionCompletionEnabled = it))
+                                    viewModel.updateNotificationPrefs(
+                                        np.copy(sessionCompletionEnabled = it)
+                                    )
                                 }
                             )
                             SwitchRow(
-                                label = "Gentle daily reminder (%02d:%02d)".format(np.dailyReminderHour, np.dailyReminderMinute),
+                                label = "Gentle daily reminder " +
+                                    "(%02d:%02d)".format(
+                                        np.dailyReminderHour,
+                                        np.dailyReminderMinute
+                                    ),
                                 checked = np.dailyReminderEnabled,
                                 onCheckedChange = {
-                                    viewModel.updateNotificationPrefs(np.copy(dailyReminderEnabled = it))
+                                    viewModel.updateNotificationPrefs(
+                                        np.copy(dailyReminderEnabled = it)
+                                    )
                                 }
                             )
                             if (np.dailyReminderEnabled) {
@@ -325,16 +559,25 @@ fun SettingsScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Reminder hour", style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        "Reminder hour",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                     Row {
                                         TextButton(onClick = {
                                             viewModel.updateNotificationPrefs(
-                                                np.copy(dailyReminderHour = (np.dailyReminderHour + 23) % 24)
+                                                np.copy(
+                                                    dailyReminderHour =
+                                                        (np.dailyReminderHour + 23) % 24
+                                                )
                                             )
                                         }) { Text("−1h") }
                                         TextButton(onClick = {
                                             viewModel.updateNotificationPrefs(
-                                                np.copy(dailyReminderHour = (np.dailyReminderHour + 1) % 24)
+                                                np.copy(
+                                                    dailyReminderHour =
+                                                        (np.dailyReminderHour + 1) % 24
+                                                )
                                             )
                                         }) { Text("+1h") }
                                     }
@@ -344,21 +587,28 @@ fun SettingsScreen(
                                 label = "Incomplete daily goal nudge",
                                 checked = np.incompleteGoalReminderEnabled,
                                 onCheckedChange = {
-                                    viewModel.updateNotificationPrefs(np.copy(incompleteGoalReminderEnabled = it))
+                                    viewModel.updateNotificationPrefs(
+                                        np.copy(incompleteGoalReminderEnabled = it)
+                                    )
                                 }
                             )
                             SwitchRow(
                                 label = "Weekly reflection summary",
                                 checked = np.weeklySummaryEnabled,
                                 onCheckedChange = {
-                                    viewModel.updateNotificationPrefs(np.copy(weeklySummaryEnabled = it))
+                                    viewModel.updateNotificationPrefs(
+                                        np.copy(weeklySummaryEnabled = it)
+                                    )
                                 }
                             )
                             SwitchRow(
-                                label = "Quiet hours (${np.quietHoursStartHour}:00 – ${np.quietHoursEndHour}:00)",
+                                label = "Quiet hours " +
+                                    "(${np.quietHoursStartHour}:00 – ${np.quietHoursEndHour}:00)",
                                 checked = np.quietHoursEnabled,
                                 onCheckedChange = {
-                                    viewModel.updateNotificationPrefs(np.copy(quietHoursEnabled = it))
+                                    viewModel.updateNotificationPrefs(
+                                        np.copy(quietHoursEnabled = it)
+                                    )
                                 }
                             )
                             if (np.quietHoursEnabled) {
@@ -367,16 +617,25 @@ fun SettingsScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Quiet start (${np.quietHoursStartHour}:00)", style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        "Quiet start (${np.quietHoursStartHour}:00)",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                     Row {
                                         TextButton(onClick = {
                                             viewModel.updateNotificationPrefs(
-                                                np.copy(quietHoursStartHour = (np.quietHoursStartHour + 23) % 24)
+                                                np.copy(
+                                                    quietHoursStartHour =
+                                                        (np.quietHoursStartHour + 23) % 24
+                                                )
                                             )
                                         }) { Text("−1h") }
                                         TextButton(onClick = {
                                             viewModel.updateNotificationPrefs(
-                                                np.copy(quietHoursStartHour = (np.quietHoursStartHour + 1) % 24)
+                                                np.copy(
+                                                    quietHoursStartHour =
+                                                        (np.quietHoursStartHour + 1) % 24
+                                                )
                                             )
                                         }) { Text("+1h") }
                                     }
@@ -386,7 +645,13 @@ fun SettingsScreen(
                     }
                 }
 
-                // 4. Privacy & Data Safety Screen Link
+                // 6. Privacy and data
+                item {
+                    SectionHeader(
+                        title = "Privacy & data",
+                        subtitle = "Everything stays on this device."
+                    )
+                }
                 item {
                     BotanicalCard(
                         modifier = Modifier
@@ -399,34 +664,50 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.PrivacyTip, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.width(10.dp))
+                                Icon(
+                                    Icons.Rounded.PrivacyTip,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(ForestSpacing.sm))
                                 Column {
-                                    Text("Privacy, Permissions & Data", style = MaterialTheme.typography.titleMedium)
                                     Text(
-                                        "Review Usage Access status, backup exclusions, and local-only guarantees",
+                                        "Privacy, Permissions & Data",
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Text(
+                                        "Review Usage Access status, backup exclusions, " +
+                                            "and local-only guarantees",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
-                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null)
+                            Icon(
+                                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null
+                            )
                         }
                     }
                 }
-
-                // 5. CSV Export
                 item {
                     BotanicalCard {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Export Local Data (CSV)", style = MaterialTheme.typography.titleMedium)
+                            Icon(
+                                Icons.Rounded.Download,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(ForestSpacing.xs))
+                            Text(
+                                "Export Local Data (CSV)",
+                                style = MaterialTheme.typography.titleMedium
+                            )
                         }
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(ForestSpacing.xs))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(ForestSpacing.xs)
                         ) {
                             OutlinedButton(
                                 onClick = { viewModel.exportFocusSessionsCsv() },
@@ -447,38 +728,55 @@ fun SettingsScreen(
                         }
                     }
                 }
-
-                // 6. Future Roadmap (Honest, no mock billing)
-                item {
-                    BotanicalCard(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Spa, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Focus Forest Plus (Planned)", style = MaterialTheme.typography.titleMedium)
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = "This local-first release is 100% free and offline. Planned future releases via Google Play Billing will introduce optional encrypted cloud sync, expanded soundscapes, and real shared focus rooms.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // 7. Delete All Local Data
                 item {
                     OutlinedButton(
                         onClick = { viewModel.requestDeleteAllData() },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp)
+                            .height(ForestSizes.minTouchTarget + 2.dp)
                             .testTag("delete_all_local_data_button"),
-                        shape = RoundedCornerShape(16.dp)
+                        shape = RoundedCornerShape(ForestRadii.control)
                     ) {
                         Icon(Icons.Rounded.DeleteForever, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(ForestSpacing.xs))
                         Text("Delete All Local Data")
+                    }
+                }
+
+                // 7. About
+                item {
+                    SectionHeader(title = "About")
+                }
+                item {
+                    BotanicalCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Rounded.Spa,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(ForestSpacing.xs))
+                            Column {
+                                Text("Focus Forest", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    text = "Version ${BuildConfig.VERSION_NAME} " +
+                                        "(${BuildConfig.VERSION_CODE})",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.testTag("app_version_text")
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(ForestSpacing.xs))
+                        Text(
+                            text = "A local-first focus timer and private forest. " +
+                                "No account, ads, analytics, cloud sync, or network permission.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -490,12 +788,13 @@ fun SettingsScreen(
 private fun SwitchRow(
     label: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    switchModifier: Modifier = Modifier
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = ForestSpacing.xxs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -504,6 +803,10 @@ private fun SwitchRow(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f)
         )
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = switchModifier
+        )
     }
 }

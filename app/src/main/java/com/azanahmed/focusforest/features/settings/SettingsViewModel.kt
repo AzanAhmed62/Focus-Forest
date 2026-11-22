@@ -6,7 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.azanahmed.focusforest.core.di.AppContainer
+import com.azanahmed.focusforest.domain.model.AmbientSoundPreset
 import com.azanahmed.focusforest.domain.model.NotificationPreferences
+import com.azanahmed.focusforest.domain.model.SessionType
 import com.azanahmed.focusforest.domain.model.ThemePreference
 import com.azanahmed.focusforest.domain.model.UsagePermissionStatus
 import com.azanahmed.focusforest.notifications.FocusWorkers
@@ -28,6 +30,11 @@ data class SettingsUiState(
     val weeklyGoalMinutes: Int = 350,
     val dailyUsageBudgetMinutes: Int = 120,
     val themePreference: ThemePreference = ThemePreference.SYSTEM,
+    val defaultSessionType: SessionType = SessionType.POMODORO,
+    val defaultSessionMinutes: Int = SessionType.POMODORO.defaultMinutes,
+    val ambientPreset: AmbientSoundPreset = AmbientSoundPreset.NONE,
+    val ambientVolume: Float = 0.55f,
+    val ambientPlayWithSession: Boolean = true,
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
     val usagePermissionStatus: UsagePermissionStatus = UsagePermissionStatus.DENIED,
     val usageTrackingEnabled: Boolean = false,
@@ -53,6 +60,11 @@ class SettingsViewModel(
         container.preferencesDataStore.dailyGoalMinutes,
         container.preferencesDataStore.dailyUsageBudgetMinutes,
         container.preferencesDataStore.themePreference,
+        container.preferencesDataStore.defaultSessionType,
+        container.preferencesDataStore.defaultSessionMinutes,
+        container.preferencesDataStore.ambientPreset,
+        container.preferencesDataStore.ambientVolume,
+        container.preferencesDataStore.ambientPlayWithSession,
         container.preferencesDataStore.notificationPreferences,
         container.preferencesDataStore.usageTrackingEnabled,
         container.preferencesDataStore.weeklyGoalMinutes,
@@ -62,10 +74,15 @@ class SettingsViewModel(
         val goal = values[1] as Int
         val usageBudget = values[2] as Int
         val theme = values[3] as ThemePreference
-        val notif = values[4] as NotificationPreferences
-        val usageEnabled = values[5] as Boolean
-        val weeklyGoal = values[6] as Int
-        val dialogs = values[7] as SettingsUiState
+        val defaultType = values[4] as SessionType
+        val defaultMinutes = values[5] as Int
+        val ambientPreset = values[6] as AmbientSoundPreset
+        val ambientVolume = values[7] as Float
+        val ambientPlay = values[8] as Boolean
+        val notif = values[9] as NotificationPreferences
+        val usageEnabled = values[10] as Boolean
+        val weeklyGoal = values[11] as Int
+        val dialogs = values[12] as SettingsUiState
 
         dialogs.copy(
             displayName = profile?.displayName ?: "",
@@ -73,6 +90,11 @@ class SettingsViewModel(
             weeklyGoalMinutes = weeklyGoal,
             dailyUsageBudgetMinutes = usageBudget,
             themePreference = theme,
+            defaultSessionType = defaultType,
+            defaultSessionMinutes = defaultMinutes,
+            ambientPreset = ambientPreset,
+            ambientVolume = ambientVolume,
+            ambientPlayWithSession = ambientPlay,
             notificationPreferences = notif,
             usagePermissionStatus = container.usageStatsGateway.checkUsagePermission(),
             usageTrackingEnabled = usageEnabled,
@@ -120,6 +142,31 @@ class SettingsViewModel(
     fun setThemePreference(preference: ThemePreference) {
         viewModelScope.launch {
             container.preferencesDataStore.setThemePreference(preference)
+        }
+    }
+
+    /** Stores the single-session starting selection. Break types are rejected by the store. */
+    fun setDefaultSession(type: SessionType, minutes: Int) {
+        viewModelScope.launch {
+            container.preferencesDataStore.setDefaultSession(type, minutes)
+        }
+    }
+
+    fun setAmbientPreset(preset: AmbientSoundPreset) {
+        viewModelScope.launch {
+            container.preferencesDataStore.setAmbientPreset(preset)
+        }
+    }
+
+    fun setAmbientVolume(volume: Float) {
+        viewModelScope.launch {
+            container.preferencesDataStore.setAmbientVolume(volume)
+        }
+    }
+
+    fun setAmbientPlayWithSession(enabled: Boolean) {
+        viewModelScope.launch {
+            container.preferencesDataStore.setAmbientPlayWithSession(enabled)
         }
     }
 
