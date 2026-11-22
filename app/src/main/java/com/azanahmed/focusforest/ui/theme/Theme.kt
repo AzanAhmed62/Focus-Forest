@@ -8,16 +8,61 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 import com.azanahmed.focusforest.domain.model.ForestThemeSkin
 import com.azanahmed.focusforest.domain.model.ThemePreference
 
 val FocusForestShapes = Shapes(
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(28.dp)
+    small = RoundedCornerShape(ForestRadii.chip),
+    medium = RoundedCornerShape(ForestRadii.control),
+    large = RoundedCornerShape(ForestRadii.hero)
 )
+
+/**
+ * Semantic colors that are not part of Material 3's [ColorScheme].
+ * They are stable across the four purchased forest skins and switch for dark theme.
+ */
+@Immutable
+data class ForestSemanticColors(
+    val success: Color,
+    val successContainer: Color,
+    val onSuccessContainer: Color,
+    val warning: Color,
+    val warningContainer: Color,
+    val onWarningContainer: Color,
+    val leaf: Color,
+    val leafContainer: Color,
+    val onLeafContainer: Color
+)
+
+private val LightForestSemanticColors = ForestSemanticColors(
+    success = SuccessMoss,
+    successContainer = SuccessMossContainer,
+    onSuccessContainer = OnSuccessMossContainer,
+    warning = WarningBark,
+    warningContainer = WarningBarkContainer,
+    onWarningContainer = OnWarningBarkContainer,
+    leaf = LeafGold,
+    leafContainer = LeafGoldContainer,
+    onLeafContainer = OnLeafGoldContainer
+)
+
+private val DarkForestSemanticColors = ForestSemanticColors(
+    success = SuccessMossDark,
+    successContainer = SuccessMossContainerDark,
+    onSuccessContainer = OnSuccessMossContainerDark,
+    warning = WarningBarkDark,
+    warningContainer = WarningBarkContainerDark,
+    onWarningContainer = OnWarningBarkContainerDark,
+    leaf = LeafGoldDark,
+    leafContainer = LeafGoldContainerDark,
+    onLeafContainer = OnLeafGoldContainerDark
+)
+
+val LocalForestSemanticColors = staticCompositionLocalOf { LightForestSemanticColors }
 
 private fun lightSchemeFor(skin: ForestThemeSkin): ColorScheme {
     val primary = when (skin) {
@@ -114,11 +159,14 @@ fun FocusForestTheme(
         ?: ForestThemeSkin.CLASSIC_SAGE
 
     val colorScheme = if (useDark) darkSchemeFor(skin) else lightSchemeFor(skin)
+    val semanticColors = if (useDark) DarkForestSemanticColors else LightForestSemanticColors
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = FocusForestTypography,
-        shapes = FocusForestShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalForestSemanticColors provides semanticColors) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = FocusForestTypography,
+            shapes = FocusForestShapes,
+            content = content
+        )
+    }
 }

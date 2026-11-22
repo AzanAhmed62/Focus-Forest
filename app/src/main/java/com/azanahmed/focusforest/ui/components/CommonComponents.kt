@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +31,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,12 +44,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.azanahmed.focusforest.R
 import com.azanahmed.focusforest.domain.model.AchievementType
 import com.azanahmed.focusforest.domain.model.AvatarStyle
+import com.azanahmed.focusforest.ui.theme.ForestRadii
+import com.azanahmed.focusforest.ui.theme.ForestSizes
+import com.azanahmed.focusforest.ui.theme.ForestSpacing
 
 @Composable
 fun BotanicalCard(
@@ -58,14 +65,73 @@ fun BotanicalCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(ForestRadii.card),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(1.dp, borderColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
+            modifier = Modifier.padding(ForestSpacing.cardPadding),
             content = content
+        )
+    }
+}
+
+@Composable
+fun SectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.semantics { heading() }
+            )
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(ForestSpacing.xxs))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (actionLabel != null && onAction != null) {
+            TextButton(onClick = onAction) {
+                Text(actionLabel)
+            }
+        }
+    }
+}
+
+@Composable
+fun ForestIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.sizeIn(
+            minWidth = ForestSizes.minTouchTarget,
+            minHeight = ForestSizes.minTouchTarget
+        )
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(ForestSizes.iconMedium)
         )
     }
 }
@@ -148,6 +214,7 @@ fun EmptyStateCard(
     subtitle: String,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
+    actionTestTag: String? = null,
     modifier: Modifier = Modifier
 ) {
     BotanicalCard(
@@ -188,7 +255,10 @@ fun EmptyStateCard(
             )
             if (actionLabel != null && onAction != null) {
                 Spacer(modifier = Modifier.height(14.dp))
-                Button(onClick = onAction) {
+                Button(
+                    onClick = onAction,
+                    modifier = if (actionTestTag != null) Modifier.testTag(actionTestTag) else Modifier
+                ) {
                     Text(actionLabel)
                 }
             }
