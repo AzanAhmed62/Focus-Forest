@@ -104,6 +104,10 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
         val AMBIENT_PRESET = stringPreferencesKey("ambient_preset")
         val AMBIENT_VOLUME = floatPreferencesKey("ambient_volume")
         val AMBIENT_PLAY_WITH_SESSION = booleanPreferencesKey("ambient_play_with_session")
+
+        // Default focus session shown when no timer is active
+        val DEFAULT_SESSION_TYPE = stringPreferencesKey("default_session_type")
+        val DEFAULT_SESSION_MINUTES = intPreferencesKey("default_session_minutes")
     }
 
     val onboardingCompleted: Flow<Boolean> = dataStore.data.map { prefs ->
@@ -156,6 +160,23 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
 
     val ambientPlayWithSession: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[Keys.AMBIENT_PLAY_WITH_SESSION] ?: true
+    }
+
+    /**
+     * The focus type preselected on the Focus screen when no timer is running.
+     * Break types are never valid defaults because a break cannot plant a tree.
+     */
+    val defaultSessionType: Flow<SessionType> = dataStore.data.map { prefs ->
+        val raw = prefs[Keys.DEFAULT_SESSION_TYPE] ?: SessionType.POMODORO.name
+        runCatching { SessionType.valueOf(raw) }
+            .getOrDefault(SessionType.POMODORO)
+            .takeUnless { it.isBreak }
+            ?: SessionType.POMODORO
+    }
+
+    val defaultSessionMinutes: Flow<Int> = dataStore.data.map { prefs ->
+        (prefs[Keys.DEFAULT_SESSION_MINUTES] ?: SessionType.POMODORO.defaultMinutes)
+            .coerceIn(5, 240)
     }
 
     val notificationPreferences: Flow<NotificationPreferences> = dataStore.data.map { prefs ->
@@ -282,6 +303,31 @@ class UserPreferencesDataStore(private val dataStore: DataStore<Preferences>) {
             it[Keys.AMBIENT_PRESET] = preset.name
             it[Keys.AMBIENT_VOLUME] = volume.coerceIn(0f, 1f)
             it[Keys.AMBIENT_PLAY_WITH_SESSION] = playWithSession
+        }
+    }
+
+    /** Updates one ambient key without overwriting the other saved ambient choices. */
+    suspend fun setAmbientPreset(preset: AmbientSoundPreset) {
+        dataStore.edit { it[Keys.AMBIENT_PRESET] = preset.name }
+    }
+
+    suspend fun setAmbientVolume(volume: Float) {
+        dataStore.edit { it[Keys.AMBIENT_VOLUME] = volume.coerceIn(0f, 1f) }
+    }
+
+    suspend fun setAmbientPlayWithSession(enabled: Boolean) {
+        dataStore.edit { it[Keys.AMBIENT_PLAY_WITH_SESSION] = enabled }
+    }
+
+    /**
+     * Persists the focus type and length used as the starting selection on Focus.
+     * Only a single-session default is stored; routines and chains keep their own settings.
+     */
+    suspend fun setDefaultSession(type: SessionType, minutes: Int) {
+        val safeType = type.takeUnless { it.isBreak } ?: SessionType.POMODORO
+        dataStore.edit {
+            it[Keys.DEFAULT_SESSION_TYPE] = safeType.name
+            it[Keys.DEFAULT_SESSION_MINUTES] = minutes.coerceIn(5, 240)
         }
     }
 

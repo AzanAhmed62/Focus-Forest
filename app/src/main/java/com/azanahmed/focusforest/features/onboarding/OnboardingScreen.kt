@@ -28,7 +28,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Forest
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Lock
@@ -38,34 +37,31 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.azanahmed.focusforest.R
-import com.azanahmed.focusforest.domain.model.UsagePermissionStatus
+import com.azanahmed.focusforest.domain.model.SessionType
 import com.azanahmed.focusforest.domain.model.UserIntention
-import com.azanahmed.focusforest.platform.usage.AndroidUsageStatsGateway
 import com.azanahmed.focusforest.ui.components.BotanicalCard
-import com.azanahmed.focusforest.ui.components.UsageAccessDisclosureDialog
+import com.azanahmed.focusforest.ui.theme.ForestRadii
+import com.azanahmed.focusforest.ui.theme.ForestSizes
+import com.azanahmed.focusforest.ui.theme.ForestSpacing
+
+private const val PAGE_COUNT = 3
 
 @Composable
 fun OnboardingScreen(
@@ -73,34 +69,9 @@ fun OnboardingScreen(
     onCompleted: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshUsagePermission()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
     BackHandler(enabled = state.currentPage > 0) {
         viewModel.previousPage()
-    }
-
-    if (state.showDisclosureDialog) {
-        UsageAccessDisclosureDialog(
-            onConfirmOpenSettings = {
-                viewModel.confirmUsageDisclosureAndLaunchSettings {
-                    runCatching {
-                        context.startActivity(AndroidUsageStatsGateway.buildUsageAccessSettingsIntent())
-                    }
-                }
-            },
-            onDismiss = { viewModel.dismissDisclosureDialog() }
-        )
     }
 
     Surface(
@@ -117,52 +88,19 @@ fun OnboardingScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .widthIn(max = 600.dp)
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
-            ) {
-                // Top step header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    if (state.currentPage > 0) {
-                        IconButton(
-                            onClick = { viewModel.previousPage() },
-                            modifier = Modifier.testTag("onboarding_back_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                contentDescription = "Previous step"
-                            )
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.size(48.dp))
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        repeat(4) { idx ->
-                            val selected = idx == state.currentPage
-                            Box(
-                                modifier = Modifier
-                                    .height(8.dp)
-                                    .width(if (selected) 26.dp else 8.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (selected) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-                                    )
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "${state.currentPage + 1} / 4",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    .padding(
+                        horizontal = ForestSpacing.screenHorizontal,
+                        vertical = ForestSpacing.screenVertical
                     )
-                }
+            ) {
+                OnboardingTopBar(
+                    currentPage = state.currentPage,
+                    canSkip = !state.isSaving,
+                    onBack = viewModel::previousPage,
+                    onSkip = { viewModel.skipOnboarding(onCompleted) }
+                )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(ForestSpacing.sm))
 
                 AnimatedContent(
                     targetState = state.currentPage,
@@ -175,69 +113,122 @@ fun OnboardingScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        verticalArrangement = Arrangement.spacedBy(ForestSpacing.md)
                     ) {
                         when (page) {
                             0 -> OnboardingWelcomePage()
-                            1 -> OnboardingGoalsPage(
+                            1 -> OnboardingRhythmPage(
                                 state = state,
                                 onNameChange = viewModel::updateDisplayName,
                                 onGoalChange = viewModel::updateDailyGoal,
                                 onIntentionSelect = viewModel::selectIntention
                             )
-                            2 -> OnboardingUsageAccessPage(
-                                permissionStatus = state.usagePermissionStatus,
-                                onReviewAndEnable = { viewModel.openDisclosureDialog() },
-                                onSkip = { viewModel.nextPage() }
+                            else -> OnboardingFirstSessionPage(
+                                state = state,
+                                onSessionTypeSelect = viewModel::selectDefaultSession,
+                                onMinutesChange = viewModel::updateDefaultSessionMinutes
                             )
-                            else -> OnboardingSummaryPage(state = state)
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(ForestSpacing.sm))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (state.currentPage < 3) {
-                        Button(
-                            onClick = { viewModel.nextPage() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(54.dp)
-                                .testTag("onboarding_next_button"),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text(
-                                text = if (state.currentPage == 0) "Begin Your Forest" else "Continue",
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
-                                contentDescription = null
-                            )
-                        }
-                    } else {
-                        Button(
-                            onClick = { viewModel.finishOnboarding(onCompleted) },
-                            enabled = !state.isSaving,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(54.dp)
-                                .testTag("onboarding_finish_button"),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text(
-                                text = if (state.isSaving) "Preparing Sanctuary..." else "Enter Focus Forest",
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                        }
+                if (state.currentPage < PAGE_COUNT - 1) {
+                    Button(
+                        onClick = viewModel::nextPage,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(ForestSizes.minTouchTarget + 6.dp)
+                            .testTag("onboarding_next_button"),
+                        shape = RoundedCornerShape(ForestRadii.control)
+                    ) {
+                        Text(
+                            text = if (state.currentPage == 0) "Begin Your Forest" else "Continue",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Spacer(modifier = Modifier.width(ForestSpacing.xs))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                            contentDescription = null
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = { viewModel.finishOnboarding(onCompleted) },
+                        enabled = !state.isSaving,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(ForestSizes.minTouchTarget + 6.dp)
+                            .testTag("onboarding_finish_button"),
+                        shape = RoundedCornerShape(ForestRadii.control)
+                    ) {
+                        Text(
+                            text = if (state.isSaving) {
+                                "Preparing Sanctuary..."
+                            } else {
+                                "Enter Focus Forest"
+                            },
+                            style = MaterialTheme.typography.labelLarge
+                        )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun OnboardingTopBar(
+    currentPage: Int,
+    canSkip: Boolean,
+    onBack: () -> Unit,
+    onSkip: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        if (currentPage > 0) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.testTag("onboarding_back_button")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Previous step"
+                )
+            }
+        } else {
+            Spacer(modifier = Modifier.size(ForestSizes.minTouchTarget))
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(ForestSpacing.xs)) {
+            repeat(PAGE_COUNT) { idx ->
+                val selected = idx == currentPage
+                Box(
+                    modifier = Modifier
+                        .height(8.dp)
+                        .width(if (selected) 26.dp else 8.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                            }
+                        )
+                )
+            }
+        }
+
+        TextButton(
+            onClick = onSkip,
+            enabled = canSkip,
+            modifier = Modifier.testTag("onboarding_skip_button")
+        ) {
+            Text("Skip")
         }
     }
 }
@@ -249,8 +240,8 @@ private fun OnboardingWelcomePage() {
         contentDescription = "Sunlit botanical forest illustration",
         modifier = Modifier
             .fillMaxWidth()
-            .height(210.dp)
-            .clip(RoundedCornerShape(24.dp)),
+            .height(190.dp)
+            .clip(RoundedCornerShape(ForestRadii.hero)),
         contentScale = ContentScale.Crop
     )
 
@@ -265,67 +256,72 @@ private fun OnboardingWelcomePage() {
         color = MaterialTheme.colorScheme.primary
     )
     Text(
-        text = "A calm, private digital wellness space designed around three steady steps:",
+        text = "A calm, private place to protect your attention. " +
+            "No account, no feed, and nothing leaves your phone.",
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
     BotanicalCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Insights, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("1. Measure Honestly", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "Observe focus sessions and optional Android foreground usage locally on your device.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Spacer(Modifier.height(14.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("2. Challenge Gently", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "Build achievable daily rhythms without guilt-tripping or harsh streak resets.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Spacer(Modifier.height(14.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Forest, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("3. Grow Your Forest", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "Every completed focus block plants a new tree and unlocks botanical rewards.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+        OnboardingPoint(
+            icon = Icons.Rounded.Timer,
+            title = "Focus without pressure",
+            body = "Start a session when you are ready. Pause, resume, and stop without penalty."
+        )
+        Spacer(modifier = Modifier.height(ForestSpacing.sm))
+        OnboardingPoint(
+            icon = Icons.Rounded.Forest,
+            title = "Plant something real",
+            body = "Each completed focus session plants one tree in a grove that is yours alone."
+        )
+        Spacer(modifier = Modifier.height(ForestSpacing.sm))
+        OnboardingPoint(
+            icon = Icons.Rounded.Lock,
+            title = "Stay private",
+            body = "Sessions, goals, and history stay in a local database on this device."
+        )
+    }
+}
+
+@Composable
+private fun OnboardingPoint(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    body: String
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.width(ForestSpacing.sm))
+        Column {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun OnboardingGoalsPage(
+private fun OnboardingRhythmPage(
     state: OnboardingUiState,
     onNameChange: (String) -> Unit,
     onGoalChange: (Int) -> Unit,
     onIntentionSelect: (UserIntention) -> Unit
 ) {
     Text(
-        text = "Shape your daily rhythm",
+        text = "Shape your rhythm",
         style = MaterialTheme.typography.headlineLarge
     )
     Text(
-        text = "Everything is saved locally on your phone — no account or internet connection required.",
+        text = "Everything is saved locally on your phone. " +
+            "You can change these choices later in Settings.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -339,7 +335,7 @@ private fun OnboardingGoalsPage(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("onboarding_name_input"),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(ForestRadii.control)
     )
 
     BotanicalCard {
@@ -362,7 +358,7 @@ private fun OnboardingGoalsPage(
             valueRange = 15f..180f,
             modifier = Modifier.testTag("onboarding_goal_slider")
         )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(ForestSpacing.xs)) {
             listOf(25, 50, 75, 100, 120).forEach { preset ->
                 FilterChip(
                     selected = state.dailyGoalMinutes == preset,
@@ -377,152 +373,131 @@ private fun OnboardingGoalsPage(
         text = "Primary intention",
         style = MaterialTheme.typography.titleMedium
     )
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(ForestSpacing.xs),
+        verticalArrangement = Arrangement.spacedBy(ForestSpacing.xxs)
+    ) {
         UserIntention.entries.forEach { intention ->
-            val selected = state.selectedIntention == intention
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onIntentionSelect(intention) }
-                    .testTag("intention_${intention.name}"),
-                shape = RoundedCornerShape(18.dp),
-                color = if (selected) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surface,
-                border = BorderStroke(
-                    width = if (selected) 2.dp else 1.dp,
-                    color = if (selected) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                )
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        text = intention.label,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                        else MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = intention.subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+            FilterChip(
+                selected = state.selectedIntention == intention,
+                onClick = { onIntentionSelect(intention) },
+                label = { Text(intention.label) },
+                modifier = Modifier.testTag("intention_${intention.name}")
+            )
         }
     }
+    Text(
+        text = state.selectedIntention.subtitle,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun OnboardingUsageAccessPage(
-    permissionStatus: UsagePermissionStatus,
-    onReviewAndEnable: () -> Unit,
-    onSkip: () -> Unit
+private fun OnboardingFirstSessionPage(
+    state: OnboardingUiState,
+    onSessionTypeSelect: (SessionType) -> Unit,
+    onMinutesChange: (Int) -> Unit
 ) {
     Text(
-        text = "Digital habits & privacy",
+        text = "Your first session",
         style = MaterialTheme.typography.headlineLarge
     )
     Text(
-        text = "Focus Forest offers optional Android Usage Access so you can understand foreground app habits alongside your focus sessions.",
-        style = MaterialTheme.typography.bodyLarge,
+        text = "Choose what opens when you tap Start Focus. " +
+            "Pomodoro plants a pine, Deep Work plants an oak, and Custom Focus plants a birch.",
+        style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
     BotanicalCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(10.dp))
-            Text("Local-Only Privacy Commitment", style = MaterialTheme.typography.titleMedium)
+        Text("Default focus session", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(ForestSpacing.xs))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(ForestSpacing.xs)) {
+            listOf(SessionType.POMODORO, SessionType.DEEP_WORK, SessionType.CUSTOM).forEach { type ->
+                FilterChip(
+                    selected = state.defaultSessionType == type,
+                    onClick = { onSessionTypeSelect(type) },
+                    label = { Text("${type.displayName} (${type.defaultMinutes}m)") },
+                    modifier = Modifier.testTag("onboarding_session_${type.name}")
+                )
+            }
         }
-        Spacer(Modifier.height(10.dp))
+        if (state.defaultSessionType == SessionType.CUSTOM) {
+            Spacer(modifier = Modifier.height(ForestSpacing.xs))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Custom length", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = "${state.defaultSessionMinutes} min",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Slider(
+                value = state.defaultSessionMinutes.toFloat(),
+                onValueChange = { onMinutesChange((it / 5f).toInt() * 5) },
+                valueRange = 10f..90f,
+                modifier = Modifier.testTag("onboarding_custom_minutes_slider")
+            )
+        }
+        Spacer(modifier = Modifier.height(ForestSpacing.xxs))
         Text(
-            text = "• What is accessed: Daily Android-observed foreground app usage totals for launchable apps you choose.\n" +
-                "• Why it is used: To display honest usage summaries, 7-day baselines, and optional reduction challenges.\n" +
-                "• Where it stays: Strictly inside this device's local database. Nothing is uploaded, sold, or shared.\n" +
-                "• Your control: Completely optional. You can skip now, disable monitoring, or delete all usage snapshots anytime.",
-            style = MaterialTheme.typography.bodyMedium,
+            text = "This selection only sets the starting point. " +
+                "You can choose another session type every time you focus.",
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 
-    if (permissionStatus == UsagePermissionStatus.GRANTED) {
-        BotanicalCard(containerColor = MaterialTheme.colorScheme.primaryContainer) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Rounded.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = "Usage Access is enabled on this device.",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-        }
-    } else {
-        OutlinedButton(
-            onClick = onReviewAndEnable,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-                .testTag("onboarding_enable_usage_button"),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Text("Review Disclosure & Enable Access")
-        }
-        TextButton(
-            onClick = onSkip,
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("onboarding_skip_usage_button")
-        ) {
-            Text("Skip for now — enable anytime in Settings")
-        }
-    }
-}
-
-@Composable
-private fun OnboardingSummaryPage(state: OnboardingUiState) {
-    Text(
-        text = "Your sanctuary is ready",
-        style = MaterialTheme.typography.headlineLarge
-    )
-    Text(
-        text = "Here is your starting setup. You can adjust any goal or privacy preference later.",
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-
     BotanicalCard {
         SummaryRow("Greeting Name", state.displayName.ifBlank { "Forest Explorer" })
-        Spacer(Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(ForestSpacing.xs))
         SummaryRow("Daily Focus Goal", "${state.dailyGoalMinutes} minutes / day")
-        Spacer(Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(ForestSpacing.xs))
         SummaryRow("Main Intention", state.selectedIntention.label)
-        Spacer(Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(ForestSpacing.xs))
         SummaryRow(
-            "Android Usage Access",
-            if (state.usagePermissionStatus == UsagePermissionStatus.GRANTED) "Enabled (local-only)" else "Skipped for now"
+            "Default Session",
+            "${state.defaultSessionType.displayName} · ${state.plannedDefaultMinutes} min"
         )
     }
 
     BotanicalCard(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Rounded.Insights,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Spacer(modifier = Modifier.width(ForestSpacing.xs))
+            Text(
+                text = "Optional usage insights",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+        Spacer(modifier = Modifier.height(ForestSpacing.xxs))
         Text(
-            text = "Celebrate consistency over perfection",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onPrimaryContainer
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = "Even one short session plants a seed in your grove. Take rest days whenever you need them.",
+            text = "Android Usage Access is never required. If you want a local-only view of " +
+                "foreground app habits, you can enable it later in Settings.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onPrimaryContainer
         )
     }
+
+    Text(
+        text = "Celebrate consistency over perfection. Even one short session plants a seed, " +
+            "and rest days are part of a sustainable rhythm.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = ForestSpacing.xs)
+    )
 }
 
 @Composable
@@ -531,7 +506,15 @@ private fun SummaryRow(label: String, value: String) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }

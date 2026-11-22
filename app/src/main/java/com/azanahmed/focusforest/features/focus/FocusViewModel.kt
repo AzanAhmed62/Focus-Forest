@@ -98,6 +98,24 @@ class FocusViewModel(
                 } else {
                     recoverChainContinuation()
                 }
+                // Apply the saved single-session default only when nothing is running.
+                val defaultType = container.preferencesDataStore.defaultSessionType.first()
+                val defaultMinutes = container.preferencesDataStore.defaultSessionMinutes.first()
+                _uiState.update { state ->
+                    val chainIdle = state.activeChain?.isCompleted != false
+                    if (state.activeTimer == null && chainIdle) {
+                        state.copy(
+                            selectedType = defaultType,
+                            customMinutes = if (defaultType == SessionType.CUSTOM) {
+                                defaultMinutes
+                            } else {
+                                state.customMinutes
+                            }
+                        )
+                    } else {
+                        state
+                    }
+                }
             } finally {
                 timerStartPending = false
                 _uiState.update { it.copy(isReady = true) }
