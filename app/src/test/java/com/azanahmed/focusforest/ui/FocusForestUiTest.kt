@@ -58,16 +58,13 @@ class FocusForestUiTest {
         composeRule.onNodeWithTag("onboarding_next_button").performClick()
         composeRule.waitForIdle()
 
-        // Page 2: Goals
+        // Page 2: Rhythm, name, and daily goal
         composeRule.onNodeWithTag("onboarding_name_input").performTextInput("Maya")
         composeRule.onNodeWithTag("onboarding_next_button").performClick()
         composeRule.waitForIdle()
 
-        // Page 3: Digital habits disclosure skip
-        composeRule.onNodeWithTag("onboarding_skip_usage_button").performScrollTo().performClick()
-        composeRule.waitForIdle()
-
-        // Page 4: Summary -> finish
+        // Page 3: First session default and summary -> finish
+        composeRule.onNodeWithTag("onboarding_session_POMODORO").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("onboarding_finish_button").performClick()
         composeRule.waitUntil(timeoutMillis = 5000) {
             composeRule.onAllNodesWithTag("quick_start_focus_button").fetchSemanticsNodes().isNotEmpty()

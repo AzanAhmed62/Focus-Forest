@@ -16,6 +16,7 @@ import com.azanahmed.focusforest.data.repository.ShopActionResult
 import com.azanahmed.focusforest.data.repository.ShopAndForestRepository
 import com.azanahmed.focusforest.data.repository.UsageRepository
 import com.azanahmed.focusforest.domain.engine.FocusTimerEngine
+import com.azanahmed.focusforest.domain.model.AmbientSoundPreset
 import com.azanahmed.focusforest.domain.model.AppUsageSummary
 import com.azanahmed.focusforest.domain.model.LaunchableAppInfo
 import com.azanahmed.focusforest.domain.model.SessionType
@@ -167,6 +168,59 @@ class PersistenceAndExportTest {
         val shopResult = shopRepo.purchaseOrEquip("deco_stone_lantern")
         assertTrue(shopResult is ShopActionResult.Success)
         assertTrue("deco_stone_lantern" in shopRepo.forestState.first().equippedDecorationIds)
+    }
+
+    @Test
+    fun `equipping from the forest never purchases locked items or spends points`() = runTest {
+        val shopRepo = ShopAndForestRepository(db, clock)
+        shopRepo.ensureCatalogSeeded()
+
+        val locked = shopRepo.equipOwnedItem("env_misty_alpine")
+        assertTrue(locked is ShopActionResult.NotOwned)
+        assertEquals("env_emerald_clearing", shopRepo.forestState.first().equippedEnvironmentId)
+
+        val starter = shopRepo.equipOwnedItem("env_emerald_clearing")
+        assertTrue(starter is ShopActionResult.Success)
+        assertEquals(0, shopRepo.forestState.first().spendableLeafPoints)
+        assertEquals("env_emerald_clearing", shopRepo.forestState.first().equippedEnvironmentId)
+    }
+
+    @Test
+    fun `default session preferences persist, clamp duration, and reject breaks`() = runTest {
+        prefs.setDefaultSession(SessionType.DEEP_WORK, 50)
+        assertEquals(SessionType.DEEP_WORK, prefs.defaultSessionType.first())
+        assertEquals(50, prefs.defaultSessionMinutes.first())
+
+        prefs.setDefaultSession(SessionType.SHORT_BREAK, 5)
+        assertEquals(SessionType.POMODORO, prefs.defaultSessionType.first())
+
+        prefs.setDefaultSession(SessionType.CUSTOM, 999)
+        assertEquals(SessionType.CUSTOM, prefs.defaultSessionType.first())
+        assertEquals(240, prefs.defaultSessionMinutes.first())
+    }
+
+    @Test
+    fun `ambient preference setters change one key without clobbering the others`() = runTest {
+        prefs.setAmbientPreferences(
+            preset = AmbientSoundPreset.SOFT_RAIN,
+            volume = 0.35f,
+            playWithSession = false
+        )
+
+        prefs.setAmbientVolume(0.8f)
+        assertEquals(0.8f, prefs.ambientVolume.first())
+        assertEquals(AmbientSoundPreset.SOFT_RAIN, prefs.ambientPreset.first())
+        assertFalse(prefs.ambientPlayWithSession.first())
+
+        prefs.setAmbientPlayWithSession(true)
+        assertTrue(prefs.ambientPlayWithSession.first())
+        assertEquals(AmbientSoundPreset.SOFT_RAIN, prefs.ambientPreset.first())
+        assertEquals(0.8f, prefs.ambientVolume.first())
+
+        prefs.setAmbientPreset(AmbientSoundPreset.OCEAN_WAVES)
+        assertEquals(AmbientSoundPreset.OCEAN_WAVES, prefs.ambientPreset.first())
+        assertEquals(0.8f, prefs.ambientVolume.first())
+        assertTrue(prefs.ambientPlayWithSession.first())
     }
 
     @Test

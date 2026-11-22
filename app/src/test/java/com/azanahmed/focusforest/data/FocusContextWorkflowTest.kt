@@ -120,6 +120,10 @@ class FocusContextWorkflowTest {
 
     @Test
     fun `routine start copies snapshots and later edit rename delete cannot rewrite active or completed history`() = runBlocking(Dispatchers.IO) {
+        // Test-only driver isolation: the ViewModel runs on the test Main dispatcher, so
+        // blocking Robolectric's main thread while advancing that dispatcher can deadlock
+        // DataStore callbacks. Running the blocking driver on IO keeps the scheduler
+        // deterministic; production still uses the normal Main-thread ViewModel scope.
         val dispatcher = StandardTestDispatcher()
         Dispatchers.setMain(dispatcher)
         try {

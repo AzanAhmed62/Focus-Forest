@@ -383,5 +383,19 @@ class DomainEnginesTest {
         assertEquals(GrowthStage.ANCIENT_GROVE, ForestGrowthEngine.stageForSeeds(105))
         assertEquals(2, ForestGrowthEngine.forestLevelForSeeds(12))
     }
+
+    @Test
+    fun `forest next-stage hint is honest at every threshold`() {
+        assertEquals(3, ForestGrowthEngine.seedsToNextStage(0))
+        assertEquals(7, ForestGrowthEngine.seedsToNextStage(3))
+        assertEquals(15, ForestGrowthEngine.seedsToNextStage(10))
+        assertEquals(30, ForestGrowthEngine.seedsToNextStage(25))
+        assertEquals(45, ForestGrowthEngine.seedsToNextStage(55))
+        assertEquals(null, ForestGrowthEngine.seedsToNextStage(100))
+        assertEquals(1, ForestGrowthEngine.forestLevelForSeeds(0))
+        assertEquals(1, ForestGrowthEngine.forestLevelForSeeds(11))
+        assertEquals(2, ForestGrowthEngine.forestLevelForSeeds(12))
+        assertEquals(3, ForestGrowthEngine.forestLevelForSeeds(24))
+    }
 }
 
