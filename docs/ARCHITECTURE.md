@@ -21,14 +21,14 @@ Focus Forest follows single-Activity MVVM with manual constructor dependency inj
     - `AchievementEngine.kt`, `StreakCalculator.kt`, `ForestGrowthEngine.kt`.
 - **`data/`**
   - `local/db/`: `FocusForestDatabase` (Room v3 + `MIGRATION_1_2` + `MIGRATION_2_3` + schema export), DAOs, entities including `FocusRoutineEntity`, `FocusCategoryEntity`, `RewardLedgerEntity`, mappers.
-  - `local/datastore/UserPreferencesDataStore.kt`: Onboarding state, theme, notification preferences, active timer & chain snapshots (including routine/category snapshots), ambient audio settings, monitored packages, daily usage budget, and the independent weekly goal (initialized once from `daily × 7`).
+  - `local/datastore/UserPreferencesDataStore.kt`: Onboarding state, theme, notification preferences, active timer & chain snapshots (including routine/category snapshots), ambient audio settings, the default single-session type/length, monitored packages, daily usage budget, and the independent weekly goal (initialized once from `daily × 7`).
   - `repository/`:
     - `RewardAuthority.kt`: Single transactional ledger authority (`reward_ledger`) preventing duplicate reward credits across ViewModels, workers, challenges, achievements, and milestones, plus anti-farm custom challenge caps (`3/day`).
     - `FocusRepository.kt`: Focus session & Pomodoro chain persistence + completion transactions. Chain continuation is serialized with a `Mutex`, guarded by `lastAdvancedSessionId` (exactly-once progression) and persisted atomically with the next timer (`saveChainAndTimer`); `recoverChainState()` reconciles chain + timer + session after process death or WorkManager-only completion, refuses to attach a timer from another chain, and completion/abort clear the active timer only when it still matches the finished session (`clearActiveTimerIfSession`). Completed sessions copy routine/category snapshots; `updateSessionMetadata` uses a narrow SQL update that can only change `note`/`reflection` on finished sessions.
     - `FocusContextRepository.kt`: Local-only routine and category CRUD, validation, pinning, archive/delete, starter-template seeding, and snapshot propagation into the existing timer/chain models.
     - `ChallengeRepository.kt`: Challenge generation, custom challenge CRUD/validation/archiving, atomic reward evaluation, and a `challengeHistory` flow for archived, expired, and past-period challenges.
     - `UsageRepository.kt`: Coalesced (`Mutex` + `CompletableDeferred`) 30s-cached Android usage polling, 14-day history backfill, budget updates. Coroutine cancellation is propagated instead of being converted into a cached usage error.
-    - `ShopAndForestRepository.kt`: Catalog seeding, Leaf Points spending, equipping themes/environments/decorations.
+    - `ShopAndForestRepository.kt`: Catalog seeding, Leaf Points spending, equipping themes/environments/decorations, and `equipOwnedItem` so the Forest screen can never implicitly purchase a locked item.
     - `DataManagementRepository.kt`: CSV export intents and full atomic wipe (`deleteAllLocalData`).
 - **`platform/`**
   - `usage/UsageStatsGateway.kt`, `AndroidUsageStatsGateway.kt`: `PACKAGE_USAGE_STATS` check, least-privilege launcher queries, typed `UsageQueryResult`, safe system/shared-lib icon exclusion. Platform-query cancellation is rethrown rather than wrapped as a usage failure.
@@ -38,7 +38,11 @@ Focus Forest follows single-Activity MVVM with manual constructor dependency inj
   - `FocusWorkers.kt`: `SessionCompletionWorker` (`SessionCompletionCoordinator`), `FocusReminderWorker`, `WeeklySummaryWorker` (`WeeklySummaryCoordinator`), and `FocusWorkers` central scheduler/canceller. Recovered chain timers are evaluated against the monotonic clock and rescheduled for their remaining duration rather than a fresh full block; worker cancellation is rethrown.
 - **`features/` & `navigation/` & `ui/`**
   - StateFlow ViewModels + Compose screens for `onboarding`, `home` (Today), `focus`, `routines`, `history`, `challenges`, `insights`, `forest`, `shop`, `settings`, and `privacy`.
-  - Today shows pinned routines, the active/paused session, recent activity, and an independently persisted weekly goal. Focus exposes one-action routine starts, category chips, and session context. Routines provides CRUD for reusable templates and categories. History provides bounded filters and a metadata-only reflection editor. Insights adds category/routine breakdowns with honest sample counts. The focus countdown exposes explicit spoken-duration semantics for screen readers.
+  - Today leads with greeting/date, today's focus, and one obvious start/resume action, followed by active session/chain context, rhythm stats, pinned routines, weekly intention, recent activity, challenge, a small forest preview, and optional usage last.
+  - Onboarding is a three-page, skippable flow (welcome, rhythm, first session). It writes the profile, daily goal, and default session preference before marking onboarding complete, so navigation disposal cannot cancel the writes. `SavedStateHandle` preserves in-progress choices across process recreation.
+  - Forest is the main product surface: a deterministic stage-aware canvas, empty-state CTA, plantable-species counts, owned environments, decoration placement, timeline, milestones, and a text summary for non-visual access. `ForestIllustrationCanvas` derives stable per-tree variation from persisted tree ids and draws a static scene; it has no infinite idle animation.
+  - Settings is grouped into Appearance, Focus, Goals, Audio, Notifications, Privacy & data, and About. The default session preference is applied by `FocusViewModel` only when no timer or chain is active, so recovery never rewrites a running session.
+  - `ui/theme/Dimens.kt` provides spacing, radius, size, and motion tokens; `Color.kt`/`Theme.kt` add semantic forest colors for light and dark themes; `CommonComponents.kt` provides token-based cards, section headers, icon buttons, and empty states. The focus countdown exposes explicit spoken-duration semantics for screen readers.
 
 ## Routines, Context, and Historical Integrity
 
@@ -55,6 +59,9 @@ Focus Forest follows single-Activity MVVM with manual constructor dependency inj
 - Cancellation is never treated as a storage failure, usage failure, or audio failure.
 - Routine/category edits and deletion cannot mutate an active timer or completed history; display always uses session snapshots.
 - Metadata edits cannot change rewards, durations, status, or the reward ledger.
+- Forest stage and level are derived only from persisted lifetime Seeds; spending Leaf Points never reduces growth, and breaks never add a tree, Seed, or Leaf Point.
+- The saved default session preference is applied only when no timer or chain is active; timer/chain recovery always wins.
+- Forest artwork is deterministic for persisted tree ids and static by default; reduced-motion settings disable decorative motion, and no infinite background animation runs.
 - Room is version 3 with genuine, non-destructive `MIGRATION_1_2` and `MIGRATION_2_3` migrations; no destructive fallback is registered.
 
 ## Future Backend Boundary

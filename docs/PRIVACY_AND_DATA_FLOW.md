@@ -66,3 +66,29 @@ advertising component.
   starter routines/categories may be re-seeded after onboarding.
 - **No device or remote verification is claimed** for privacy behavior in this phase; see
   [PHASE_0_4_REPORT.md](PHASE_0_4_REPORT.md).
+
+## Phase 0.5 Privacy Review
+
+Phase 0.5 added no permission, network dependency, account, SDK, remote analytics,
+advertising component, or Room schema change.
+
+- **Onboarding stays local and optional**: the display name, daily goal, intention, and
+  default session are stored only in the local Room profile and DataStore preferences.
+  Skipping onboarding requires no account, Usage Access, or notification permission.
+  In-progress page state lives in `SavedStateHandle` and is not persisted beyond the
+  process.
+- **Default session preference**: `default_session_type` and `default_session_minutes`
+  are local DataStore keys. They are read only when no timer or chain is active, so a
+  recovered session is never rewritten.
+- **Ambient audio settings**: preset, volume, and “start with sessions” are local
+  DataStore keys. Audio is still synthesized on-device; no audio file is downloaded.
+- **Forest artwork is local**: the grove canvas and thumbnails are drawn from local
+  Compose primitives and persisted forest state. No remote image is fetched. An unused
+  bundled forest JPEG was deleted to reduce APK size.
+- **Usage Access is demoted, not required**: onboarding mentions it only as an optional
+  later choice. Today places optional usage last and explicitly states that the app works
+  fully without it.
+- **Full wipe** clears the new DataStore keys along with all other preferences and Room
+  data; only documented starter routines/categories may be re-seeded after onboarding.
+- **No device or remote verification is claimed** for privacy behavior in this phase; see
+  [PHASE_0_5_REPORT.md](PHASE_0_5_REPORT.md).
